@@ -1,124 +1,132 @@
-# Testing hosting a local language model
+# Artemis Local LLM Voice Assistant
 
 ![Status](https://img.shields.io/badge/status-prototype-orange)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205-red)
-![LLM](https://img.shields.io/badge/model-Qwen2.5%201.5B-green)
+![Model](https://img.shields.io/badge/model-Qwen2.5%201.5B-green)
 ![TTS](https://img.shields.io/badge/TTS-SAM-lightgrey)
 
-Artemis AI Voice Robot is an offline (future work will include possible online capabilities) Raspberry Pi voice assistant prototype that combines a local large language model with form of retro-style speech style. The project is designed around a Raspberry Pi 5 with 16 GB of RAM, Qwen2.5 1.5B Instruct GGUF, and SAM text-to-speech.
+Artemis is an offline-first voice assistant prototype built around a local large language model, local knowledge files, and retro SAM text-to-speech. The current target is a Raspberry Pi 5 with 16 GB of RAM running Qwen2.5 1.5B Instruct through `llama.cpp`.
 
-The initial goal is to build a small, self-contained AI robot personality that can respond locally without relying on any major cloud APIs. Artemis is currently being worked on in order to focus on an Emergency Alert System inspired mode, mixing things like practical instruction and fictional lore-driven behavior.
+The project currently focuses on an Emergency Alert System-inspired personality. It routes each prompt by intent and topic, loads only the relevant local knowledge, keeps the prompt within a fixed token budget, requests a response from the local model, and renders the result to a WAV file through SAM.
 
-## Project Goals
-- Run a local LLM on a Raspberry Pi 5.
-- Generate voice output using SAM TTS.
-- Support configurable AI personalities through JSON files.
-- Build toward multiple interaction modes, starting with Artemis EAS Mode.
+## Current capabilities
 
-## Current System Overview
+- OpenAI-compatible local inference through `llama-server`
+- Weighted intent, topic, and severity routing with fuzzy matching
+- Selective loading of local knowledge instead of injecting every file
+- Prompt and response token budgeting for Raspberry Pi constraints
+- JSON-based identity and mode configuration
+- Retro speech output through SAM
+- Debug output for routing, prompt size, model timing, and token usage
+- A lightweight router test that does not call the model or SAM
+
+## How it works
 
 ```mermaid
-flowchart TD
-    A[User Input] --> B[Python Controller]
-
-    B --> C[Persona / Mode Config]
-    C --> C1[identity.json]
-    C --> C2[eas.json]
-    C --> C3[Local knowledge files]
-
-    B --> D[Local LLM]
-    D --> D2[Qwen2.5 1.5B Instruct GGUF]
-
-    D --> E[Text Response]
-    E --> F[SAM TTS]
-    F --> G[Audio Output]
+flowchart LR
+    A[User input] --> B[Python controller]
+    B --> C[Intent and topic router]
+    C --> D[Token budget and selected knowledge]
+    D --> E[llama-server]
+    E --> F[Artemis response]
+    F --> G[SAM text-to-speech]
+    G --> H[WAV audio output]
 ```
-## Hardware
 
-The current target hardware is:
+The active request path is:
 
-- Raspberry Pi 5, 16 GB RAM
-- MicroSD card (or SSD storage for possible future models)
-- Speaker or audio output device
-- Possible microphones for future voice input functionality
-- Optional display, LEDs, servos, or robotic body components for future works
+1. `load_llm_sam.py` loads the Artemis identity and active mode configuration.
+2. `intent_router.py` scores the user's intent, topics, and urgency.
+3. `token_budget.py` selects and trims relevant files from `memory/knowledge/`.
+4. The controller sends the assembled prompt to the local `llama-server` endpoint.
+5. The response is converted to a WAV file by SAM.
 
-The project was designed to start as a terminal-based prototype before expanding into anything resembling a physical robot.
+Inputs that receive no intent or topic score are logged to `unrecognized_inputs.txt` for later router tuning. They do not call the LLM.
 
-## Model
-The current model is:
+## Project structure
 
 ```text
-Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M
+Python_Scripts/
+  load_llm_sam.py    Main terminal application and prompt pipeline
+  intent_router.py   Intent, topic, severity, and knowledge-file routing
+  token_budget.py    Context and response token limits
+memory/
+  identity.json      Artemis identity and voice settings
+  modes/             Mode definitions
+  knowledge/         Local EAS lore, advisories, contacts, and protocols
+Archive/             Older experiments and tests kept for reference
 ```
-## Download Qwen2.5 1.5B Instruct GGUF locally
+
+## Requirements
+
+- Python 3.9 or newer
+- [`rapidfuzz`](https://github.com/rapidfuzz/RapidFuzz)
+- A local [`llama.cpp`](https://github.com/ggml-org/llama.cpp) build containing `llama-server`
+- [Qwen2.5 1.5B Instruct GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), currently using the `Q4_K_M` quantization
+- [SAM: Software Automatic Mouth](https://github.com/s-macke/SAM)
+
+The current hardware target is a Raspberry Pi 5 with 16 GB of RAM. Development and router testing can be done elsewhere, but the default SAM paths are Pi-specific.
+
+## Setup
+
+Clone the repository and install the Python dependency:
+
 ```bash
-huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir ~/models/qwen --local-dir-use-symlinks False
+git clone https://github.com/Ace0I0/Local_LM_testing.git
+cd Local_LM_testing
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install rapidfuzz
 ```
 
-Then run with the following command 
+Download `qwen2.5-1.5b-instruct-q4_k_m.gguf` from the model page linked above, then start the local server:
 
 ```bash
-./build/bin/llama-cli -m ~/models/qwen/qwen2.5-1.5b-instruct-q4_k_m.gguf -cnv -t 4 -c 4096 -n 256
+~/llama.cpp/build/bin/llama-server \
+  -m ~/models/qwen/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  --host 127.0.0.1 \
+  --port 8080 \
+  -c 8192
 ```
 
-Note: This is just to test the model locally by it self without any external modifications
+Build SAM separately and confirm these constants in `Python_Scripts/load_llm_sam.py` match your installation:
 
-### Text-to-Speech
+```python
+LLAMA_SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
+SAM_BINARY = Path("/home/pi/SAM/sam")
+OUTPUT_WAV = Path("/home/pi/SAM/robot_response.wav")
+```
 
-This project uses [SAM: Software Automatic Mouth](https://github.com/s-macke/SAM) as of this moment for its only mode, a C port of the classic 1982 Commodore 64 speech synthesizer, to generate a retro non-human robot voice locally on the Raspberry Pi.
+Run Artemis from the repository root:
 
-The SAM binary is built directly on the Pi and used with Python through command-line calls that generate `.wav` audio files.
+```bash
+python Python_Scripts/load_llm_sam.py
+```
 
-Note: The SAM source was modified to support longer generated responses by chunking input before the actual synthesis step.
+## Router test
 
-Default voice settings:
+The current controller includes a small routing check that does not require a running model server or SAM installation:
 
-| Parameter | Value |
-|---|---|
-| Pitch | 95 |
-| Speed | 65 |
-| Throat | 130 |
-| Mouth | 110 |
+```bash
+python Python_Scripts/load_llm_sam.py --router-test
+```
 
-## Prompt Strategy
+## Current status and limitations
 
-Artemis uses a layered prompt structure:
+- EAS Mode is the only mode wired into the controller; its path is currently hardcoded.
+- Learning and Informational mode JSON files are drafts and are not selectable at runtime.
+- `memory/active_mode.txt` is not yet used by the controller.
+- Microphone input, wake-word detection, and physical robot controls are not implemented.
+- SAM and output paths are currently hardcoded for `/home/pi/SAM/`.
+- The files under `Archive/` are historical references, not the active test suite.
 
-1. Base identity from `identity.json`
-2. Active mode rules from `eas.json` or any future modes
-3. Optional local knowledge files
-4. User input
-5. Short response instruction
+## Near-term direction
 
-This makes it easier to change the assistant's personality without editing the main Python code.
-
-## Planned Future Features
-
-- Microphone input
-- Wake word detection
-- Better response streaming
-- Improved prompt assembly
-- Local RAG-style knowledge lookup
-- Multiple modes beyond EAS Mode
-- Servo/animatronic movement
-- OLED or small screen interface
-- Startup animation or boot sequence
-- Mode switching through buttons, voice, or terminal commands
-
-## Future Modes
-
-Potential future modes:
-
-| Mode | Purpose |
-|---|---|
-| EAS Mode | Broadcast-style emergency assistant persona |
-| Learning Mode | Explain topics clearly and calmly |
-| Informational Mode | Factual assistant behavior |
+The next project direction has intentionally been left open. Likely areas include improving local inference performance, making modes selectable, strengthening retrieval and memory, adding voice input, or developing the physical assistant interface after the LLM pipeline is mature.
 
 ## Credits
 
-- [`llama.cpp`](https://github.com/ggerganov/llama.cpp) for local LLM inference
+- [`llama.cpp`](https://github.com/ggml-org/llama.cpp) for local LLM inference
 - [`Qwen2.5`](https://huggingface.co/Qwen/Qwen2.5-1.5B) for the language model
 - [`SAM`](https://github.com/s-macke/SAM) for retro text-to-speech
 - Raspberry Pi Foundation for the target hardware platform
