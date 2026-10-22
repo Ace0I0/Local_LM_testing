@@ -155,7 +155,10 @@ done
 printf 'pub host=%s topic=%s user=%s qos=%s retain=%s version=%s\n' \
   "$host" "$topic" "${user:-anonymous}" "$qos" "$retain" "$version" >> "$FAKE_ROOT/commands.log"
 [[ "$user" == "artemis_test" && "$password" == "test-password" ]] || { printf 'Not authorized\n' >&2; exit 5; }
-[[ "$topic" == "artemis/test/climate" ]] || { printf 'Not authorized\n' >&2; exit 5; }
+if [[ "$topic" != "artemis/test/climate" && "${FAKE_ALLOW_FORBIDDEN:-0}" != "1" ]]; then
+  printf 'Warning: Publish 1 failed: Not authorized.\n' >&2
+  exit 0
+fi
 [[ "$qos" == "1" && "$retain" == "1" && "$version" == "mqttv5" ]]
 printf '%s\n%s\n' "$topic" "$message" > "$FAKE_ROOT/retained"
 EOF
@@ -254,5 +257,12 @@ if run_wizard "$service_failure_root" $'\ny\n' "$service_failure_root/output" FA
 fi
 assert_contains "$service_failure_root/output" 'Mosquitto failed to start'
 assert_contains "$service_failure_root/commands.log" 'journalctl -u mosquitto.service -n 50 --no-pager'
+
+acl_failure_root="$TEST_ROOT/acl-failure"
+mkdir -p "$acl_failure_root"
+if run_wizard "$acl_failure_root" $'\ny\ntest-password\n' "$acl_failure_root/output" FAKE_ALLOW_FORBIDDEN=1; then
+  fail 'wizard succeeded when the broker accepted an out-of-ACL publish'
+fi
+assert_contains "$acl_failure_root/output" 'The broker did not reject a publish outside artemis/test/#'
 
 printf 'PASS: Mosquitto setup wizard behavior\n'

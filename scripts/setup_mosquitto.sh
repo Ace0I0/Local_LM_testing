@@ -323,9 +323,9 @@ assert_test_payload "127.0.0.1"
 if mosquitto_sub -V mqttv5 -h 127.0.0.1 -t "$ARTEMIS_MQTT_TOPIC" -q 1 -C 1 -W 3 >/dev/null 2>&1; then
   fail_wizard "Anonymous subscription unexpectedly succeeded."
 fi
-if authenticated_publish "127.0.0.1" "artemis/forbidden" "denied" >/dev/null 2>&1; then
-  fail_wizard "The test account published outside artemis/test/#."
-fi
+denied_output=$(authenticated_publish "127.0.0.1" "artemis/forbidden" "denied" 2>&1 || true)
+[[ "$denied_output" == *'failed: Not authorized.'* ]] || \
+  fail_wizard "The broker did not reject a publish outside artemis/test/#."
 
 if ! sudo systemctl restart mosquitto.service; then
   service_diagnostics
