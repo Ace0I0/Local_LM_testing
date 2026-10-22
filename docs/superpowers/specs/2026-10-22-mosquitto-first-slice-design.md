@@ -1,7 +1,7 @@
 # Mosquitto First Slice Design
 
 Date: 2026-10-22  
-Status: Approved in conversation; pending written review
+Status: Approved
 
 ## Objective
 
