@@ -103,6 +103,22 @@ Run Artemis from the repository root:
 python Python_Scripts/load_llm_sam.py
 ```
 
+## MQTT broker setup
+
+The first MQTT slice assumes the broker is running on the target Raspberry Pi: ARM64 (`aarch64`), Debian 13, and a trusted local network. From an interactive SSH session on the Pi, update this branch and run the setup wizard from the repository root:
+
+```bash
+bash scripts/setup_mosquitto.sh
+```
+
+The wizard installs Mosquitto, creates the temporary `artemis_test` account, enables the service, and verifies authenticated MQTT 5 publish/subscribe behavior locally and through the Pi's LAN address. It owns these files:
+
+- `/etc/mosquitto/conf.d/artemis.conf`
+- `/etc/mosquitto/artemis.passwd`
+- `/etc/mosquitto/artemis.acl`
+
+It uses the retained QoS 1 test topic `artemis/test/climate`. Enter the same test password at both prompts. A successful run ends with `Setup complete`; rerunning the wizard replaces the test account's password and rechecks the broker. The permanent sensor topic contract and production service identities are intentionally deferred.
+
 ## Router test
 
 The current controller includes a small routing check that does not require a running model server or SAM installation:
