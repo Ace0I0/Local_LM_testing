@@ -1,6 +1,6 @@
 # Artemis Project Direction Interview
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 
 This is the living record of the decisions guiding Artemis. New interview answers should be added here before implementation plans are written.
 
@@ -100,6 +100,12 @@ Artemis will become a local-first home helper running on a Raspberry Pi 5. The f
 
 **Decision:** Keep ESPHome and ESP32 configuration outside this repository. This Artemis repository will document and consume the MQTT topic contract while remaining focused on the local LLM, sensor interpretation, summaries, and user interface.
 
+### 16. What permanent MQTT contract should temperature and humidity use?
+
+**Answer:** Use ESPHome's native separate scalar topics, identify each node by its installed location, and keep Celsius as the canonical temperature unit.
+
+**Decision:** Use the `artemis/sensors/<location>` topic prefix with retained QoS 1 state at `sensor/temperature/state`, `sensor/humidity/state`, and `status`. Measurement payloads are unitless decimals; availability is `online` or `offline`. Publish every 60 seconds by default through a deployment-time `sensor_update_interval` setting, and treat readings as stale after three configured intervals. The complete contract is recorded in [`docs/superpowers/specs/2026-10-22-environment-mqtt-contract-design.md`](superpowers/specs/2026-10-22-environment-mqtt-contract-design.md).
+
 ## Confirmed constraints
 
 - Local and offline for the first version
@@ -109,6 +115,7 @@ Artemis will become a local-first home helper running on a Raspberry Pi 5. The f
 - ESP32-based peripheral sensor nodes publishing readings to the Raspberry Pi
 - ESPHome with MQTT rather than custom ESP32 firmware
 - ESPHome configurations maintained in a separate sensor-node repository
+- Location-based MQTT topics with separate Celsius temperature, relative-humidity, and availability state
 - MQTT communication through Mosquitto
 - Home Assistant as the primary dashboard
 - Artemis has read-only sensor access
@@ -123,7 +130,6 @@ Artemis will become a local-first home helper running on a Raspberry Pi 5. The f
 
 - Which temperature/humidity sensor models and connection protocol to use
 - Which particulate measurements and sensor hardware to support later
-- MQTT topic naming and payload format
 - What history Artemis should retain for daily summaries
 - Which conditions count as unusual or alert-worthy
 - How users will ask Artemis for sensor information
