@@ -206,6 +206,14 @@ ARTEMIS_ACL_FILE="$ARTEMIS_MOSQUITTO_ETC_DIR/artemis.acl"
 ARTEMIS_MQTT_USER="artemis_test"
 ARTEMIS_MQTT_TOPIC="artemis/test/climate"
 ARTEMIS_MQTT_PAYLOAD='{"temperature_c": 21.5, "humidity_pct": 45.0}'
+SENSOR_MQTT_USER="esphome_living_room"
+HOME_ASSISTANT_MQTT_USER="homeassistant"
+ARTEMIS_SERVICE_MQTT_USER="artemis"
+TEMPERATURE_TOPIC="artemis/sensors/living_room/sensor/temperature/state"
+HUMIDITY_TOPIC="artemis/sensors/living_room/sensor/humidity/state"
+STATUS_TOPIC="artemis/sensors/living_room/status"
+DISCOVERY_TOPIC="homeassistant/sensor/living_room/temperature/config"
+HOME_ASSISTANT_STATUS_TOPIC="homeassistant/status"
 ENV_FILE=/dev/null
 
 fail_wizard() {
@@ -222,26 +230,47 @@ service_diagnostics() {
   sudo journalctl -u mosquitto.service -n 50 --no-pager || true
 }
 
-authenticated_publish() {
-  local host="$1" topic="$2" message="$3"
-  mosquitto_pub -V mqttv5 -h "$host" -u "$ARTEMIS_MQTT_USER" \
-    -P "$ARTEMIS_MQTT_TEST_PASSWORD" -t "$topic" -m "$message" -q 1 -r
-}
-
-authenticated_subscribe() {
-  local host="$1"
-  mosquitto_sub -V mqttv5 -h "$host" -u "$ARTEMIS_MQTT_USER" \
-    -P "$ARTEMIS_MQTT_TEST_PASSWORD" -t "$ARTEMIS_MQTT_TOPIC" \
-    -q 1 -C 1 -W 5 -v
-}
-
-assert_test_payload() {
-  local host="$1" actual
-  if ! actual=$(authenticated_subscribe "$host"); then
-    fail_wizard "Authenticated subscribe failed through $host. Check the password and broker logs."
+ensure_mqtt_user() {
+  local user="$1"
+  if sudo grep -Eq "^${user}:" "$ARTEMIS_PASSWORD_FILE" 2>/dev/null; then
+    say "Keeping the existing $user password."
+    return
   fi
-  [[ "$actual" == "$ARTEMIS_MQTT_TOPIC $ARTEMIS_MQTT_PAYLOAD" ]] || \
-    fail_wizard "Unexpected MQTT payload through $host: $actual"
+
+  say "Create a password for $user and save it in your password manager."
+  if sudo test -s "$ARTEMIS_PASSWORD_FILE"; then
+    sudo mosquitto_passwd "$ARTEMIS_PASSWORD_FILE" "$user"
+  else
+    sudo mosquitto_passwd -c "$ARTEMIS_PASSWORD_FILE" "$user"
+  fi
+}
+
+mqtt_publish() {
+  local host="$1" user="$2" password="$3" topic="$4" message="$5"
+  mosquitto_pub -V mqttv5 -h "$host" -u "$user" -P "$password" \
+    -t "$topic" -m "$message" -q 1 -r
+}
+
+mqtt_subscribe() {
+  local host="$1" user="$2" password="$3" topic="$4"
+  mosquitto_sub -V mqttv5 -h "$host" -u "$user" -P "$password" \
+    -t "$topic" -q 1 -C 1 -W 5 -v
+}
+
+assert_mqtt_payload() {
+  local host="$1" user="$2" password="$3" topic="$4" expected="$5" actual
+  if ! actual=$(mqtt_subscribe "$host" "$user" "$password" "$topic"); then
+    fail_wizard "$user could not read $topic through $host. Check its password and ACL."
+  fi
+  [[ "$actual" == "$topic $expected" ]] || \
+    fail_wizard "Unexpected MQTT payload for $topic through $host: $actual"
+}
+
+assert_publish_denied() {
+  local user="$1" password="$2" topic="$3" description="$4" denied_output
+  denied_output=$(mqtt_publish "127.0.0.1" "$user" "$password" "$topic" "denied" 2>&1 || true)
+  [[ "$denied_output" == *'failed: Not authorized.'* ]] || \
+    fail_wizard "The broker allowed $description."
 }
 
 run_wizard() {
@@ -275,9 +304,15 @@ done
 mosquitto -h 2>&1 | head -n 1 || true
 
 stage "Configure broker"
-say "The password prompt below creates the temporary artemis_test account."
-say "The password is not saved by this wizard."
-sudo mosquitto_passwd -c "$ARTEMIS_PASSWORD_FILE" "$ARTEMIS_MQTT_USER"
+say "Missing MQTT accounts will prompt for passwords; existing hashes are preserved."
+say "Passwords are stored only as hashes and are not saved by this wizard."
+for mqtt_user in \
+  "$ARTEMIS_MQTT_USER" \
+  "$SENSOR_MQTT_USER" \
+  "$HOME_ASSISTANT_MQTT_USER" \
+  "$ARTEMIS_SERVICE_MQTT_USER"; do
+  ensure_mqtt_user "$mqtt_user"
+done
 
 config_temp=$(mktemp)
 acl_temp=$(mktemp)
@@ -288,7 +323,26 @@ printf '%s\n' \
   "acl_file $ARTEMIS_ACL_FILE" > "$config_temp"
 printf '%s\n' \
   "user $ARTEMIS_MQTT_USER" \
-  'topic readwrite artemis/test/#' > "$acl_temp"
+  'topic readwrite artemis/test/#' \
+  '' \
+  "user $SENSOR_MQTT_USER" \
+  'topic write artemis/sensors/living_room/sensor/temperature/state' \
+  'topic write artemis/sensors/living_room/sensor/humidity/state' \
+  'topic write artemis/sensors/living_room/status' \
+  'topic write homeassistant/+/living_room/#' \
+  'topic read homeassistant/status' \
+  '' \
+  "user $HOME_ASSISTANT_MQTT_USER" \
+  'topic read artemis/sensors/+/sensor/temperature/state' \
+  'topic read artemis/sensors/+/sensor/humidity/state' \
+  'topic read artemis/sensors/+/status' \
+  'topic read homeassistant/#' \
+  'topic write homeassistant/status' \
+  '' \
+  "user $ARTEMIS_SERVICE_MQTT_USER" \
+  'topic read artemis/sensors/+/sensor/temperature/state' \
+  'topic read artemis/sensors/+/sensor/humidity/state' \
+  'topic read artemis/sensors/+/status' > "$acl_temp"
 
 sudo install -o root -g root -m 0644 "$config_temp" "$ARTEMIS_CONFIG_FILE"
 sudo install -o root -g mosquitto -m 0640 "$acl_temp" "$ARTEMIS_ACL_FILE"
@@ -311,27 +365,74 @@ if ! sudo systemctl is-active --quiet mosquitto.service; then
 fi
 
 stage "Verify MQTT"
-say "Re-enter the artemis_test password to run local and LAN checks."
+say "Enter each account password to check its exact permissions."
 ask_secret ARTEMIS_MQTT_TEST_PASSWORD "MQTT test password:"
 [[ -n "$ARTEMIS_MQTT_TEST_PASSWORD" ]] || fail_wizard "The MQTT test password cannot be empty."
+ask_secret SENSOR_MQTT_PASSWORD "Living-room sensor password:"
+[[ -n "$SENSOR_MQTT_PASSWORD" ]] || fail_wizard "The sensor password cannot be empty."
+ask_secret HOME_ASSISTANT_MQTT_PASSWORD "Home Assistant MQTT password:"
+[[ -n "$HOME_ASSISTANT_MQTT_PASSWORD" ]] || fail_wizard "The Home Assistant password cannot be empty."
+ask_secret ARTEMIS_SERVICE_MQTT_PASSWORD "Artemis MQTT password:"
+[[ -n "$ARTEMIS_SERVICE_MQTT_PASSWORD" ]] || fail_wizard "The Artemis password cannot be empty."
 
-if ! authenticated_publish "127.0.0.1" "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"; then
+if ! mqtt_publish "127.0.0.1" "$ARTEMIS_MQTT_USER" "$ARTEMIS_MQTT_TEST_PASSWORD" \
+  "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"; then
   fail_wizard "Authenticated publish failed. Check the password and broker logs."
 fi
-assert_test_payload "127.0.0.1"
+assert_mqtt_payload "127.0.0.1" "$ARTEMIS_MQTT_USER" "$ARTEMIS_MQTT_TEST_PASSWORD" \
+  "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"
 
 if mosquitto_sub -V mqttv5 -h 127.0.0.1 -t "$ARTEMIS_MQTT_TOPIC" -q 1 -C 1 -W 3 >/dev/null 2>&1; then
   fail_wizard "Anonymous subscription unexpectedly succeeded."
 fi
-denied_output=$(authenticated_publish "127.0.0.1" "artemis/forbidden" "denied" 2>&1 || true)
-[[ "$denied_output" == *'failed: Not authorized.'* ]] || \
-  fail_wizard "The broker did not reject a publish outside artemis/test/#."
+assert_publish_denied "$ARTEMIS_MQTT_USER" "$ARTEMIS_MQTT_TEST_PASSWORD" \
+  "artemis/forbidden" "the test account to publish outside artemis/test/#"
+
+for topic_and_payload in \
+  "$TEMPERATURE_TOPIC 21.5" \
+  "$HUMIDITY_TOPIC 45.0" \
+  "$STATUS_TOPIC online"; do
+  read -r topic payload <<< "$topic_and_payload"
+  mqtt_publish "127.0.0.1" "$SENSOR_MQTT_USER" "$SENSOR_MQTT_PASSWORD" "$topic" "$payload" || \
+    fail_wizard "The living-room sensor could not publish $topic."
+done
+discovery_payload='{"name":"Living Room Temperature","state_topic":"artemis/sensors/living_room/sensor/temperature/state","unit_of_measurement":"°C","device_class":"temperature","unique_id":"living_room_temperature"}'
+mqtt_publish "127.0.0.1" "$SENSOR_MQTT_USER" "$SENSOR_MQTT_PASSWORD" \
+  "$DISCOVERY_TOPIC" "$discovery_payload" || fail_wizard "The sensor could not publish Home Assistant discovery."
+
+assert_mqtt_payload "127.0.0.1" "$HOME_ASSISTANT_MQTT_USER" "$HOME_ASSISTANT_MQTT_PASSWORD" \
+  "$TEMPERATURE_TOPIC" "21.5"
+assert_mqtt_payload "127.0.0.1" "$HOME_ASSISTANT_MQTT_USER" "$HOME_ASSISTANT_MQTT_PASSWORD" \
+  "$HUMIDITY_TOPIC" "45.0"
+assert_mqtt_payload "127.0.0.1" "$HOME_ASSISTANT_MQTT_USER" "$HOME_ASSISTANT_MQTT_PASSWORD" \
+  "$STATUS_TOPIC" "online"
+assert_mqtt_payload "127.0.0.1" "$HOME_ASSISTANT_MQTT_USER" "$HOME_ASSISTANT_MQTT_PASSWORD" \
+  "$DISCOVERY_TOPIC" "$discovery_payload"
+
+mqtt_publish "127.0.0.1" "$HOME_ASSISTANT_MQTT_USER" "$HOME_ASSISTANT_MQTT_PASSWORD" \
+  "$HOME_ASSISTANT_STATUS_TOPIC" "online" || fail_wizard "Home Assistant could not publish its status."
+assert_mqtt_payload "127.0.0.1" "$SENSOR_MQTT_USER" "$SENSOR_MQTT_PASSWORD" \
+  "$HOME_ASSISTANT_STATUS_TOPIC" "online"
+
+assert_publish_denied "$SENSOR_MQTT_USER" "$SENSOR_MQTT_PASSWORD" \
+  "artemis/sensors/bedroom/status" "the living-room sensor to publish for another location"
+assert_publish_denied "$HOME_ASSISTANT_MQTT_USER" "$HOME_ASSISTANT_MQTT_PASSWORD" \
+  "$STATUS_TOPIC" "Home Assistant to publish sensor state"
+assert_publish_denied "$ARTEMIS_SERVICE_MQTT_USER" "$ARTEMIS_SERVICE_MQTT_PASSWORD" \
+  "$STATUS_TOPIC" "Artemis to publish sensor state"
 
 if ! sudo systemctl restart mosquitto.service; then
   service_diagnostics
   fail_wizard "Mosquitto failed to restart during the retained-message test."
 fi
-assert_test_payload "127.0.0.1"
+assert_mqtt_payload "127.0.0.1" "$ARTEMIS_MQTT_USER" "$ARTEMIS_MQTT_TEST_PASSWORD" \
+  "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"
+assert_mqtt_payload "127.0.0.1" "$ARTEMIS_SERVICE_MQTT_USER" "$ARTEMIS_SERVICE_MQTT_PASSWORD" \
+  "$TEMPERATURE_TOPIC" "21.5"
+assert_mqtt_payload "127.0.0.1" "$ARTEMIS_SERVICE_MQTT_USER" "$ARTEMIS_SERVICE_MQTT_PASSWORD" \
+  "$HUMIDITY_TOPIC" "45.0"
+assert_mqtt_payload "127.0.0.1" "$ARTEMIS_SERVICE_MQTT_USER" "$ARTEMIS_SERVICE_MQTT_PASSWORD" \
+  "$STATUS_TOPIC" "online"
 
 lan_ip=''
 for address in $(hostname -I); do
@@ -341,16 +442,19 @@ for address in $(hostname -I); do
   fi
 done
 [[ -n "$lan_ip" ]] || fail_wizard "No non-loopback LAN IPv4 address was found."
-if ! authenticated_publish "$lan_ip" "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"; then
+if ! mqtt_publish "$lan_ip" "$ARTEMIS_MQTT_USER" "$ARTEMIS_MQTT_TEST_PASSWORD" \
+  "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"; then
   fail_wizard "Authenticated publish failed through LAN address $lan_ip."
 fi
-assert_test_payload "$lan_ip"
-unset ARTEMIS_MQTT_TEST_PASSWORD
+assert_mqtt_payload "$lan_ip" "$ARTEMIS_MQTT_USER" "$ARTEMIS_MQTT_TEST_PASSWORD" \
+  "$ARTEMIS_MQTT_TOPIC" "$ARTEMIS_MQTT_PAYLOAD"
+unset ARTEMIS_MQTT_TEST_PASSWORD SENSOR_MQTT_PASSWORD HOME_ASSISTANT_MQTT_PASSWORD ARTEMIS_SERVICE_MQTT_PASSWORD
 
 say "Mosquitto is active on port 1883 and the retained MQTT checks passed."
 say "Config: $ARTEMIS_CONFIG_FILE"
 say "ACL: $ARTEMIS_ACL_FILE"
 say "Test topic: $ARTEMIS_MQTT_TOPIC"
+say "Living-room topic root: artemis/sensors/living_room"
 
 finish
 }

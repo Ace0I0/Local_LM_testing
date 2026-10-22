@@ -111,13 +111,26 @@ The first MQTT slice assumes the broker is running on the target Raspberry Pi: A
 bash scripts/setup_mosquitto.sh
 ```
 
-The wizard installs Mosquitto, creates the temporary `artemis_test` account, enables the service, and verifies authenticated MQTT 5 publish/subscribe behavior locally and through the Pi's LAN address. It owns these files:
+The wizard installs Mosquitto, creates any missing Artemis MQTT accounts, enables the service, and verifies authenticated MQTT 5 publish/subscribe behavior locally and through the Pi's LAN address. It owns these files:
 
 - `/etc/mosquitto/conf.d/artemis.conf`
 - `/etc/mosquitto/artemis.passwd`
 - `/etc/mosquitto/artemis.acl`
 
-It uses the retained QoS 1 test topic `artemis/test/climate`. Enter the same test password at both prompts. A successful run ends with `Setup complete`; rerunning the wizard replaces the test account's password and rechecks the broker. The permanent sensor topic contract and production service identities are intentionally deferred.
+The password file contains usernames and password hashes, while the ACL file contains their permissions. MQTT topics such as `artemis/sensors/living_room/status` are broker addresses, not directories. Retained topic values live in Mosquitto's persistence database when persistence is enabled by Debian's broker configuration.
+
+The wizard provisions these least-privilege accounts:
+
+| Account | Access |
+| --- | --- |
+| `artemis_test` | Read/write under `artemis/test/#` |
+| `esphome_living_room` | Publish the living-room temperature, humidity, availability, and discovery messages; read `homeassistant/status` |
+| `homeassistant` | Read sensor and discovery messages; publish `homeassistant/status` |
+| `artemis` | Read temperature, humidity, and availability only |
+
+Choose and save a different password for each account. `mosquitto_passwd` asks twice when creating a missing account, and the verification stage asks once more for each password. Input is hidden. Existing account hashes and unrelated users are preserved on reruns; a successful run ends with `Setup complete`.
+
+The verification publishes retained QoS 1 sample values for `living_room` (`21.5` °C, `45.0`% humidity, and `online`), checks each permitted consumer, rejects cross-location and write attempts, restarts Mosquitto to prove retention, and repeats the test-account check over the Pi's LAN address.
 
 ## Router test
 

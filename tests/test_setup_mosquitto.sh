@@ -69,10 +69,22 @@ EOF
   cat > "$fake_bin/mosquitto_passwd" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$1" == "-c" ]]
-mkdir -p "$(dirname "$2")"
-printf '%s:hashed-password\n' "$3" > "$2"
-printf 'mosquitto_passwd %s %s\n' "$1" "$3" >> "$FAKE_ROOT/commands.log"
+if [[ "$1" == "-c" ]]; then
+  password_file="$2"
+  user="$3"
+  mode=create
+else
+  password_file="$1"
+  user="$2"
+  mode=add
+fi
+mkdir -p "$(dirname "$password_file")"
+if [[ "$mode" == create ]]; then
+  printf '%s:hashed-password\n' "$user" > "$password_file"
+else
+  printf '%s:hashed-password\n' "$user" >> "$password_file"
+fi
+printf 'mosquitto_passwd %s %s\n' "$mode" "$user" >> "$FAKE_ROOT/commands.log"
 EOF
 
   cat > "$fake_bin/install" <<'EOF'
@@ -138,6 +150,25 @@ EOF
   cat > "$fake_bin/mosquitto_pub" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+valid_credentials() {
+  case "$1:$2" in
+    artemis_test:test-password|esphome_living_room:sensor-password|homeassistant:ha-password|artemis:artemis-password) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+can_write() {
+  case "$1:$2" in
+    artemis_test:artemis/test/*) return 0 ;;
+    esphome_living_room:artemis/sensors/living_room/sensor/temperature/state|\
+    esphome_living_room:artemis/sensors/living_room/sensor/humidity/state|\
+    esphome_living_room:artemis/sensors/living_room/status|\
+    esphome_living_room:homeassistant/*/living_room/*|\
+    homeassistant:homeassistant/status) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 host='' topic='' message='' user='' password='' qos='' retain=0 version=''
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -154,18 +185,41 @@ while [[ $# -gt 0 ]]; do
 done
 printf 'pub host=%s topic=%s user=%s qos=%s retain=%s version=%s\n' \
   "$host" "$topic" "${user:-anonymous}" "$qos" "$retain" "$version" >> "$FAKE_ROOT/commands.log"
-[[ "$user" == "artemis_test" && "$password" == "test-password" ]] || { printf 'Not authorized\n' >&2; exit 5; }
-if [[ "$topic" != "artemis/test/climate" && "${FAKE_ALLOW_FORBIDDEN:-0}" != "1" ]]; then
+valid_credentials "$user" "$password" || { printf 'Not authorized\n' >&2; exit 5; }
+if ! can_write "$user" "$topic" && [[ "${FAKE_ALLOW_FORBIDDEN:-0}" != "1" ]]; then
   printf 'Warning: Publish 1 failed: Not authorized.\n' >&2
   exit 0
 fi
 [[ "$qos" == "1" && "$retain" == "1" && "$version" == "mqttv5" ]]
-printf '%s\n%s\n' "$topic" "$message" > "$FAKE_ROOT/retained"
+mkdir -p "$FAKE_ROOT/retained"
+printf '%s\n%s\n' "$topic" "$message" > "$FAKE_ROOT/retained/${topic//\//__}"
 EOF
 
   cat > "$fake_bin/mosquitto_sub" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+valid_credentials() {
+  case "$1:$2" in
+    artemis_test:test-password|esphome_living_room:sensor-password|homeassistant:ha-password|artemis:artemis-password) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+can_read() {
+  case "$1:$2" in
+    artemis_test:artemis/test/*|\
+    esphome_living_room:homeassistant/status|\
+    homeassistant:artemis/sensors/*/sensor/temperature/state|\
+    homeassistant:artemis/sensors/*/sensor/humidity/state|\
+    homeassistant:artemis/sensors/*/status|\
+    homeassistant:homeassistant/*|\
+    artemis:artemis/sensors/*/sensor/temperature/state|\
+    artemis:artemis/sensors/*/sensor/humidity/state|\
+    artemis:artemis/sensors/*/status) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 host='' topic='' user='' password='' count='' timeout='' qos='' version='' verbose=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -183,10 +237,10 @@ while [[ $# -gt 0 ]]; do
 done
 printf 'sub host=%s topic=%s user=%s count=%s timeout=%s qos=%s version=%s\n' \
   "$host" "$topic" "${user:-anonymous}" "$count" "$timeout" "$qos" "$version" >> "$FAKE_ROOT/commands.log"
-[[ "$user" == "artemis_test" && "$password" == "test-password" ]] || { printf 'Not authorized\n' >&2; exit 5; }
-[[ "$topic" == "artemis/test/climate" ]] || { printf 'Not authorized\n' >&2; exit 5; }
+valid_credentials "$user" "$password" || { printf 'Not authorized\n' >&2; exit 5; }
+can_read "$user" "$topic" || { printf 'Not authorized\n' >&2; exit 5; }
 [[ "$count" == "1" && -n "$timeout" && "$qos" == "1" && "$version" == "mqttv5" && "$verbose" == "1" ]]
-mapfile -t retained < "$FAKE_ROOT/retained"
+mapfile -t retained < "$FAKE_ROOT/retained/${topic//\//__}"
 printf '%s %s\n' "${retained[0]}" "${retained[1]}"
 EOF
 
@@ -217,7 +271,7 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 success_root="$TEST_ROOT/success"
 mkdir -p "$success_root"
-run_wizard "$success_root" $'\ny\ntest-password\n' "$success_root/output"
+run_wizard "$success_root" $'\ny\ntest-password\nsensor-password\nha-password\nartemis-password\n' "$success_root/output"
 
 config="$success_root/etc/mosquitto/conf.d/artemis.conf"
 acl="$success_root/etc/mosquitto/artemis.acl"
@@ -229,7 +283,23 @@ assert_contains "$config" "password_file $passwd"
 assert_contains "$config" "acl_file $acl"
 assert_contains "$acl" 'user artemis_test'
 assert_contains "$acl" 'topic readwrite artemis/test/#'
+assert_contains "$acl" 'user esphome_living_room'
+assert_contains "$acl" 'topic write artemis/sensors/living_room/sensor/temperature/state'
+assert_contains "$acl" 'topic write artemis/sensors/living_room/sensor/humidity/state'
+assert_contains "$acl" 'topic write artemis/sensors/living_room/status'
+assert_contains "$acl" 'topic write homeassistant/+/living_room/#'
+assert_contains "$acl" 'topic read homeassistant/status'
+assert_contains "$acl" 'user homeassistant'
+assert_contains "$acl" 'topic read artemis/sensors/+/sensor/temperature/state'
+assert_contains "$acl" 'topic read artemis/sensors/+/sensor/humidity/state'
+assert_contains "$acl" 'topic read artemis/sensors/+/status'
+assert_contains "$acl" 'topic read homeassistant/#'
+assert_contains "$acl" 'topic write homeassistant/status'
+assert_contains "$acl" 'user artemis'
 assert_contains "$passwd" 'artemis_test:hashed-password'
+assert_contains "$passwd" 'esphome_living_room:hashed-password'
+assert_contains "$passwd" 'homeassistant:hashed-password'
+assert_contains "$passwd" 'artemis:hashed-password'
 assert_mode "$config" 644
 assert_mode "$acl" 640
 assert_mode "$passwd" 640
@@ -239,9 +309,30 @@ assert_contains "$success_root/commands.log" 'apt-get install -y mosquitto mosqu
 assert_contains "$success_root/commands.log" 'sub host=127.0.0.1 topic=artemis/test/climate user=anonymous'
 assert_contains "$success_root/commands.log" 'pub host=127.0.0.1 topic=artemis/forbidden user=artemis_test'
 assert_contains "$success_root/commands.log" 'sub host=192.168.0.44 topic=artemis/test/climate user=artemis_test'
+assert_contains "$success_root/commands.log" 'pub host=127.0.0.1 topic=artemis/sensors/living_room/sensor/temperature/state user=esphome_living_room'
+assert_contains "$success_root/commands.log" 'sub host=127.0.0.1 topic=artemis/sensors/living_room/sensor/temperature/state user=homeassistant'
+assert_contains "$success_root/commands.log" 'sub host=127.0.0.1 topic=artemis/sensors/living_room/status user=artemis'
+assert_contains "$success_root/commands.log" 'pub host=127.0.0.1 topic=homeassistant/status user=homeassistant'
+assert_contains "$success_root/commands.log" 'sub host=127.0.0.1 topic=homeassistant/status user=esphome_living_room'
+assert_contains "$success_root/commands.log" 'pub host=127.0.0.1 topic=artemis/sensors/bedroom/status user=esphome_living_room'
+assert_contains "$success_root/commands.log" 'pub host=127.0.0.1 topic=artemis/sensors/living_room/status user=homeassistant'
+assert_contains "$success_root/commands.log" 'pub host=127.0.0.1 topic=artemis/sensors/living_room/status user=artemis'
 assert_contains "$success_root/output" 'Setup complete'
-assert_not_contains "$success_root/output" 'test-password'
-assert_not_contains "$success_root/commands.log" 'test-password'
+for secret in test-password sensor-password ha-password artemis-password; do
+  assert_not_contains "$success_root/output" "$secret"
+  assert_not_contains "$success_root/commands.log" "$secret"
+done
+
+preserve_root="$TEST_ROOT/preserve"
+mkdir -p "$preserve_root/etc/mosquitto"
+printf 'legacy_user:existing-hash\nartemis_test:original-test-hash\n' > "$preserve_root/etc/mosquitto/artemis.passwd"
+run_wizard "$preserve_root" $'\ny\ntest-password\nsensor-password\nha-password\nartemis-password\n' "$preserve_root/output"
+assert_contains "$preserve_root/etc/mosquitto/artemis.passwd" 'legacy_user:existing-hash'
+assert_contains "$preserve_root/etc/mosquitto/artemis.passwd" 'artemis_test:original-test-hash'
+assert_contains "$preserve_root/etc/mosquitto/artemis.passwd" 'esphome_living_room:hashed-password'
+assert_contains "$preserve_root/etc/mosquitto/artemis.passwd" 'homeassistant:hashed-password'
+assert_contains "$preserve_root/etc/mosquitto/artemis.passwd" 'artemis:hashed-password'
+assert_not_contains "$preserve_root/commands.log" 'mosquitto_passwd add artemis_test'
 
 apt_failure_root="$TEST_ROOT/apt-failure"
 mkdir -p "$apt_failure_root"
@@ -260,9 +351,9 @@ assert_contains "$service_failure_root/commands.log" 'journalctl -u mosquitto.se
 
 acl_failure_root="$TEST_ROOT/acl-failure"
 mkdir -p "$acl_failure_root"
-if run_wizard "$acl_failure_root" $'\ny\ntest-password\n' "$acl_failure_root/output" FAKE_ALLOW_FORBIDDEN=1; then
+if run_wizard "$acl_failure_root" $'\ny\ntest-password\nsensor-password\nha-password\nartemis-password\n' "$acl_failure_root/output" FAKE_ALLOW_FORBIDDEN=1; then
   fail 'wizard succeeded when the broker accepted an out-of-ACL publish'
 fi
-assert_contains "$acl_failure_root/output" 'The broker did not reject a publish outside artemis/test/#'
+assert_contains "$acl_failure_root/output" 'The broker allowed the test account to publish outside artemis/test/#'
 
 printf 'PASS: Mosquitto setup wizard behavior\n'
