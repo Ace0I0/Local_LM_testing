@@ -272,7 +272,7 @@ sudo apt-get install -y mosquitto mosquitto-clients
 for command_name in mosquitto mosquitto_passwd mosquitto_pub mosquitto_sub journalctl install; do
   require_command "$command_name"
 done
-mosquitto -h 2>&1 | head -n 1
+mosquitto -h 2>&1 | head -n 1 || true
 
 stage "Configure broker"
 say "The password prompt below creates the temporary artemis_test account."

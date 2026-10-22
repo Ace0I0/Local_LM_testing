@@ -63,6 +63,7 @@ EOF
   cat > "$fake_bin/mosquitto" <<'EOF'
 #!/usr/bin/env bash
 printf 'mosquitto version 2.0.21\n'
+exit 1
 EOF
 
   cat > "$fake_bin/mosquitto_passwd" <<'EOF'
