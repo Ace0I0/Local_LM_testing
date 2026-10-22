@@ -122,7 +122,9 @@ python Python_Scripts/load_llm_sam.py --router-test
 
 ## Near-term direction
 
-The next project direction has intentionally been left open. Likely areas include improving local inference performance, making modes selectable, strengthening retrieval and memory, adding voice input, or developing the physical assistant interface after the LLM pipeline is mature.
+Artemis is moving toward a local, read-only smart-home helper. The first milestone will use MQTT and Mosquitto to observe basic sensors, with Home Assistant as the primary dashboard. Artemis, the broker, and Home Assistant will initially share one Raspberry Pi 5.
+
+The ongoing questions and confirmed decisions are recorded in [`docs/project-direction-interview.md`](docs/project-direction-interview.md).
 
 ## Credits
 
