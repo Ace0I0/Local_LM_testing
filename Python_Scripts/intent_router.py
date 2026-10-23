@@ -312,7 +312,6 @@ INTENT_RULES: dict[str, dict[str, Any]] = {
             "what's the temperature": 18,
             "current temperature": 14,
             "room temperature": 14,
-            "temperature": 12,
             "how humid": 18,
             "what is the humidity": 18,
             "current humidity": 14,
@@ -320,7 +319,8 @@ INTENT_RULES: dict[str, dict[str, Any]] = {
             "room conditions": 14,
         },
         "keywords": {
-            "temperature": 10,
+            "temperature": 6,
+            "tempeture": 6,
             "temp": 8,
             "humidity": 10,
             "humid": 8,

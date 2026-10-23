@@ -26,6 +26,11 @@ class SensorRoutingTests(unittest.TestCase):
                 self.assertFalse(route["needs_knowledge"])
                 self.assertEqual(route["selected_files"], [])
 
+    def test_explanation_about_temperature_is_not_a_sensor_query(self) -> None:
+        route = analyze_query("what is the history of temperature measurement")
+
+        self.assertEqual(route["primary_intent"], "explanation")
+
 
 class SensorAnswerTests(unittest.TestCase):
     def current_living_room(self) -> SensorState:
@@ -152,13 +157,58 @@ class SensorAnswerTests(unittest.TestCase):
         self.assertEqual(answer, "Which location do you mean?")
 
     def test_named_unknown_location_does_not_fall_back(self) -> None:
-        answer = build_sensor_answer(
-            "what is the temperature in the bedroom",
-            sensor_route("temperature"),
-            self.current_living_room(),
+        cases = (
+            ("what is the temperature in the bedroom", "temperature"),
+            ("what is the bedroom temperature", "temperature"),
+            ("how humid is the bedroom", "humidity"),
         )
 
-        self.assertEqual(answer, "I do not have sensor information for the bedroom.")
+        for user_text, topic in cases:
+            with self.subTest(user_text=user_text):
+                answer = build_sensor_answer(
+                    user_text,
+                    sensor_route(topic),
+                    self.current_living_room(),
+                )
+
+                self.assertEqual(
+                    answer,
+                    "I do not have sensor information for the bedroom.",
+                )
+
+    def test_prefers_the_complete_overlapping_location_name(self) -> None:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/bedroom/sensor/temperature/state",
+            b"10",
+        )
+        state.ingest(
+            "artemis/sensors/master_bedroom/sensor/temperature/state",
+            b"25",
+        )
+
+        answer = build_sensor_answer(
+            "what is the master bedroom temperature",
+            sensor_route("temperature"),
+            state,
+        )
+
+        self.assertEqual(
+            answer,
+            "The master bedroom temperature is 77 degrees Fahrenheit.",
+        )
+
+    def test_asks_for_one_location_when_multiple_are_named(self) -> None:
+        state = self.current_living_room()
+        state.ingest("artemis/sensors/bedroom/status", b"online")
+
+        answer = build_sensor_answer(
+            "compare the bedroom and living room temperature",
+            sensor_route("temperature"),
+            state,
+        )
+
+        self.assertEqual(answer, "Which location do you mean?")
 
     def test_non_sensor_route_is_not_handled(self) -> None:
         answer = build_sensor_answer(

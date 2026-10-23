@@ -12,6 +12,18 @@ _NAMED_LOCATION = re.compile(
     r"(?P<location>[a-z0-9]+(?:\s+[a-z0-9]+)*?)"
     r"(?:\s+in\s+(?:degrees?\s+)?(?:celsius|fahrenheit))?$"
 )
+_LEADING_LOCATION_PATTERNS = (
+    re.compile(
+        r"^(?:what is|what s)\s+"
+        r"(?!the\s+(?:temperature|humidity)$)(?:the\s+)?"
+        r"(?P<location>[a-z0-9]+(?:\s+[a-z0-9]+)*)\s+"
+        r"(?:temperature|humidity)$"
+    ),
+    re.compile(
+        r"^how humid is\s+(?:the\s+)?"
+        r"(?P<location>[a-z0-9]+(?:\s+[a-z0-9]+)*)$"
+    ),
+)
 _UNIT_ONLY = {"celsius", "fahrenheit", "degree celsius", "degree fahrenheit"}
 
 
@@ -51,12 +63,37 @@ def _resolve_location(
     state: SensorState,
 ) -> tuple[str, str | None]:
     known_locations = state.known_locations()
+    matches: list[tuple[str, int, int]] = []
     for location_id in known_locations:
         display_name = _display_location(location_id)
-        if re.search(rf"\b{re.escape(display_name)}\b", normalized_text):
-            return location_id, None
+        for match in re.finditer(rf"\b{re.escape(display_name)}\b", normalized_text):
+            matches.append((location_id, match.start(), match.end()))
+
+    complete_matches = {
+        location_id
+        for location_id, start, end in matches
+        if not any(
+            other_start <= start
+            and other_end >= end
+            and (other_start, other_end) != (start, end)
+            for _, other_start, other_end in matches
+        )
+    }
+    if len(complete_matches) == 1:
+        return complete_matches.pop(), None
+    if len(complete_matches) > 1:
+        return "", "Which location do you mean?"
 
     named_match = _NAMED_LOCATION.search(normalized_text)
+    if named_match is None:
+        named_match = next(
+            (
+                match
+                for pattern in _LEADING_LOCATION_PATTERNS
+                if (match := pattern.match(normalized_text)) is not None
+            ),
+            None,
+        )
     if named_match is not None:
         named_location = named_match.group("location").strip()
         if named_location not in _UNIT_ONLY:
