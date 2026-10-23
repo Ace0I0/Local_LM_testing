@@ -1,15 +1,20 @@
+import getpass
 import sys
 import time
 import threading
 import json
+import os
 import subprocess
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from typing import Callable, Mapping, Optional
 
 # The controller imports the router and budget helpers once, then calls them for
 # every user turn inside the main prompt-building path.
 from intent_router import analyze_query, route_intent, print_router_debug
+from sensor_answers import build_sensor_answer
+from sensor_state import SensorState
 import token_budget as budget
 
 
@@ -313,8 +318,27 @@ def log_unrecognized_input(user_text: str) -> None:
         log_file.write(log_line)
 
 
+def get_mqtt_password(
+    environ: Mapping[str, str],
+    prompt: Callable[[str], str],
+) -> str:
+    if "ARTEMIS_MQTT_PASSWORD" in environ:
+        password = environ["ARTEMIS_MQTT_PASSWORD"]
+    else:
+        password = prompt("Artemis MQTT password: ")
+
+    if not password:
+        raise ValueError("The Artemis MQTT password cannot be empty.")
+    return password
+
+
 # System prompt builder -> Accumulates all needed info so Artemis can function correctly based on the mode chosen
-def build_system_prompt(identity: dict, mode: dict, user_text: str) -> tuple[str, dict]:
+def build_system_prompt(
+    identity: dict,
+    mode: dict,
+    user_text: str,
+    route: Optional[dict] = None,
+) -> tuple[str, dict]:
     name = identity.get("name", "Artemis")
     robot_type = identity.get("type", "retro animatronic robot")
     voice_engine = identity.get("voice_engine", "SAM")
@@ -325,7 +349,8 @@ def build_system_prompt(identity: dict, mode: dict, user_text: str) -> tuple[str
     examples = format_examples(mode.get("example_responses", []))
 
     # First call: route the user input so we only load the most relevant files.
-    route = route_intent(user_text)
+    if route is None:
+        route = route_intent(user_text)
     selected_file_details = route.get("selected_file_details", [])
     selected_files = route.get("selected_files", [])
     response_tokens = budget.calculate_response_tokens(selected_file_details, user_text)
@@ -603,6 +628,21 @@ def make_sam_wav(text: str, identity: dict) -> None:
 
     subprocess.run(cmd, check=True)
 
+
+def handle_sensor_turn(
+    user_text: str,
+    route: dict,
+    state: SensorState,
+    identity: dict,
+) -> bool:
+    robot_text = build_sensor_answer(user_text, route, state)
+    if robot_text is None:
+        return False
+
+    print(f"{PURPLE}{identity.get('name', 'Artemis')}{RESET}: {robot_text}")
+    make_sam_wav(robot_text, identity)
+    return True
+
 # Just a lil "spinning" animation so i can see if Artemis hung or not
 def thinking_spinner(stop_event: threading.Event) -> None:
     frames = ["—", "/", "|", "\\"]
@@ -664,21 +704,7 @@ def run_router_tests() -> int:
     return 0 if failures == 0 else 1
 
 
-def main() -> None:
-    if "--router-test" in sys.argv:
-        raise SystemExit(run_router_tests())
-
-    if not SAM_BINARY.exists():
-        print(f"{RED}SAM binary not found at: {SAM_BINARY}{RESET}")
-        return
-
-    try:
-        identity = load_identity()
-        mode = load_mode()
-    except Exception as exc:
-        print(f"{RED}Failed to load Artemis memory files: {exc}{RESET}")
-        return
-
+def run_interactive(identity: dict, mode: dict, sensor_state: SensorState) -> None:
     voice_settings = identity.get("voice_settings", {})
 
     print(f"{BOLD}{RED}Local Qwen + SAM test{RESET}")
@@ -705,9 +731,19 @@ def main() -> None:
             continue
 
         total_start = time.perf_counter()
+        route = route_intent(user_text)
+
+        if handle_sensor_turn(user_text, route, sensor_state, identity):
+            print()
+            continue
 
         prompt_start = time.perf_counter()
-        system_prompt, prompt_debug = build_system_prompt(identity, mode, user_text)
+        system_prompt, prompt_debug = build_system_prompt(
+            identity,
+            mode,
+            user_text,
+            route=route,
+        )
         prompt_elapsed = time.perf_counter() - prompt_start
         
         print()
@@ -760,6 +796,47 @@ def main() -> None:
         # Debugging timing info so i can see what is taking the most amount of time to process
         print(f"{CYAN}{BOLD}Timing:{RESET} prompt={format_elapsed(prompt_elapsed)}, llm={format_elapsed(llm_elapsed)}, sam={format_elapsed(sam_elapsed)}, total={format_elapsed(total_elapsed)}")
         print()
+
+
+def main() -> None:
+    if "--router-test" in sys.argv:
+        raise SystemExit(run_router_tests())
+
+    if not SAM_BINARY.exists():
+        print(f"{RED}SAM binary not found at: {SAM_BINARY}{RESET}")
+        return
+
+    try:
+        identity = load_identity()
+        mode = load_mode()
+    except Exception as exc:
+        print(f"{RED}Failed to load Artemis memory files: {exc}{RESET}")
+        return
+
+    try:
+        from mqtt_sensor_client import MqttSensorClient
+    except ModuleNotFoundError as exc:
+        if exc.name == "paho" or (exc.name or "").startswith("paho."):
+            print(
+                f"{RED}MQTT support is not installed. "
+                f"Run: python -m pip install -r requirements.txt{RESET}"
+            )
+            return
+        raise
+
+    try:
+        mqtt_password = get_mqtt_password(os.environ, getpass.getpass)
+    except ValueError as exc:
+        print(f"{RED}{exc}{RESET}")
+        return
+
+    sensor_state = SensorState()
+    mqtt_client = MqttSensorClient(sensor_state, mqtt_password)
+    mqtt_client.start()
+    try:
+        run_interactive(identity, mode, sensor_state)
+    finally:
+        mqtt_client.stop()
 
 if __name__ == "__main__":
     main()

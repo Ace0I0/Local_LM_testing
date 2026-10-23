@@ -19,6 +19,7 @@ The project currently focuses on an Emergency Alert System-inspired personality.
 - Retro speech output through SAM
 - Debug output for routing, prompt size, model timing, and token usage
 - A lightweight router test that does not call the model or SAM
+- Read-only MQTT temperature and humidity answers that bypass the LLM
 
 ## How it works
 
@@ -61,6 +62,7 @@ Archive/             Older experiments and tests kept for reference
 
 - Python 3.9 or newer
 - [`rapidfuzz`](https://github.com/rapidfuzz/RapidFuzz)
+- [`paho-mqtt`](https://github.com/eclipse-paho/paho.mqtt.python)
 - A local [`llama.cpp`](https://github.com/ggml-org/llama.cpp) build containing `llama-server`
 - [Qwen2.5 1.5B Instruct GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), currently using the `Q4_K_M` quantization
 - [SAM: Software Automatic Mouth](https://github.com/s-macke/SAM)
@@ -76,7 +78,7 @@ git clone https://github.com/Ace0I0/Local_LM_testing.git
 cd Local_LM_testing
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install rapidfuzz
+python -m pip install -r requirements.txt
 ```
 
 Download `qwen2.5-1.5b-instruct-q4_k_m.gguf` from the model page linked above, then start the local server:
@@ -131,6 +133,35 @@ The wizard provisions these least-privilege accounts:
 Choose and save a different password for each account. `mosquitto_passwd` asks twice when creating a missing account, and the verification stage asks once more for each password. Input is hidden. Existing account hashes and unrelated users are preserved on reruns; a successful run ends with `Setup complete`.
 
 The verification publishes retained QoS 1 sample values for `living_room` (`21.5` °C, `45.0`% humidity, and `online`), checks each permitted consumer, rejects cross-location and write attempts, restarts Mosquitto to prove retention, and repeats the test-account check over the Pi's LAN address.
+
+## Artemis sensor questions
+
+Artemis uses Paho MQTT to subscribe in the background with the read-only `artemis` account. Run the application normally and enter that account's MQTT password at the hidden prompt:
+
+```bash
+python Python_Scripts/load_llm_sam.py
+```
+
+For unattended startup, `ARTEMIS_MQTT_PASSWORD` may be supplied through the process environment. Never commit it or place it directly in a shell command. RapidFuzz handles question routing; Paho maintains the MQTT 5 connection and automatically reconnects when the local broker returns.
+
+Initial supported questions include:
+
+- `What is the living room temperature?`
+- `What is the living room temperature in Celsius?`
+- `What is the humidity?`
+- `How are conditions in the living room?`
+
+MQTT measurements remain Celsius internally. Artemis presents Fahrenheit by default and uses Celsius when requested explicitly. A measurement becomes unavailable after 180 seconds without an update. General condition reports omit unavailable measurements; a direct question says only that no current reading is available. Broker downtime does not stop non-sensor questions.
+
+The setup wizard's retained sample is accepted when Artemis starts, but it becomes unavailable after 180 seconds because it is not a live sensor. The future ESPHome node will refresh it every 60 seconds.
+
+Run the local checks with:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=Python_Scripts python3 -m unittest discover -s tests -p 'test_*.py' -v
+bash tests/test_setup_mosquitto.sh
+python3 Python_Scripts/load_llm_sam.py --router-test
+```
 
 ## Router test
 
