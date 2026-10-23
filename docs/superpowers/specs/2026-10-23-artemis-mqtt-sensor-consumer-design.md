@@ -1,7 +1,7 @@
 # Artemis MQTT Sensor Consumer Design
 
 Date: 2026-10-23
-Status: Proposed
+Status: Approved
 
 ## Intent
 
