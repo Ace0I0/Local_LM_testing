@@ -636,6 +636,10 @@ def run_router_tests() -> int:
         ("what should i do if someone has symptoms", "safety_instruction", {"disease"}),
         ("where is station 7", "location_query", {"location"}),
         ("tell me about mimics", "explanation", {"creature"}),
+        ("what is the living room temperature", "sensor_query", {"temperature"}),
+        ("how humid is the living room", "sensor_query", {"humidity"}),
+        ("how are conditions in the living room", "sensor_query", {"environment"}),
+        ("what is the tempeture", "sensor_query", {"temperature"}),
     ]
 
     failures = 0

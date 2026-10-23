@@ -306,6 +306,34 @@ INTENT_RULES: dict[str, dict[str, Any]] = {
         "depth": "normal",
         "needs_knowledge": True,
     },
+    "sensor_query": {
+        "phrases": {
+            "what is the temperature": 18,
+            "what's the temperature": 18,
+            "current temperature": 14,
+            "room temperature": 14,
+            "temperature": 12,
+            "how humid": 18,
+            "what is the humidity": 18,
+            "current humidity": 14,
+            "how are conditions": 18,
+            "room conditions": 14,
+        },
+        "keywords": {
+            "temperature": 10,
+            "temp": 8,
+            "humidity": 10,
+            "humid": 8,
+            "conditions": 8,
+        },
+        "combos": [
+            ("how", "humid", 12),
+            ("room", "temperature", 10),
+            ("room", "humidity", 10),
+        ],
+        "depth": "none",
+        "needs_knowledge": False,
+    },
     "out_of_scope": {
         "phrases": {},
         "keywords": {},
@@ -413,6 +441,23 @@ TOPIC_RULES: dict[str, dict[str, int]] = {
         "anything reported": 6,
         "any reports": 6,
         "any updates": 6,
+    },
+    "temperature": {
+        "temperature": 8,
+        "temp": 7,
+        "celsius": 5,
+        "fahrenheit": 5,
+        "degrees": 3,
+    },
+    "humidity": {
+        "humidity": 8,
+        "humid": 7,
+        "moisture": 5,
+    },
+    "environment": {
+        "conditions": 8,
+        "condition": 7,
+        "room conditions": 10,
     },
     "general": {
         "hello": 3,
@@ -650,7 +695,13 @@ def _depth_for_route(primary_intent: str, topics: list[str]) -> str:
 
 
 def _needs_knowledge(primary_intent: str, topics: list[str]) -> bool:
-    if primary_intent in {"identity_query", "mode_query", "general_chat", "out_of_scope"}:
+    if primary_intent in {
+        "identity_query",
+        "mode_query",
+        "general_chat",
+        "sensor_query",
+        "out_of_scope",
+    }:
         return False
     return bool(INTENT_RULES.get(primary_intent, {}).get("needs_knowledge", False) or topics)
 
