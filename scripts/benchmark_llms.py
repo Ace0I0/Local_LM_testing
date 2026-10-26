@@ -28,7 +28,7 @@ DEFAULT_SUITE = REPO_ROOT / "benchmarks" / "artemis-prompts.json"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "benchmark-results"
 DEFAULT_URL = "http://127.0.0.1:8080/v1/chat/completions"
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_MARKDOWN = re.compile(r"(?m)\x60{3}|\*\*|__|^\s*(?:#{1,6}|>|[-+]\s|\d+\.\s)")
+_MARKDOWN = re.compile(r"(?m)[\x60*]|__|^\s*(?:#{1,6}|>|[-+]\s|\d+\.\s)")
 _REASONING = re.compile(r"</?(?:think|analysis)>", re.IGNORECASE)
 
 
@@ -109,6 +109,19 @@ def build_payload(case: dict[str, Any], api_model: str) -> tuple[dict[str, Any],
     return payload, prompt_info
 
 
+def request_digest(payload: dict[str, Any]) -> str:
+    effective_request = {
+        key: value for key, value in payload.items() if key != "model"
+    }
+    canonical = json.dumps(
+        effective_request,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def post_json(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
@@ -159,6 +172,7 @@ def evaluate_response(case: dict[str, Any], text: str) -> dict[str, Any]:
     required = [phrase.lower() for phrase in case.get("required_any", [])]
     forbidden = [phrase.lower() for phrase in case.get("forbidden", [])]
     checks = {
+        "non_empty": bool(text.strip()),
         "reasoning_markup": _REASONING.search(text) is None,
         "markdown": _MARKDOWN.search(text) is None,
         "max_words": len(text.split()) <= case["max_words"],
@@ -188,7 +202,14 @@ def run_benchmark(args: argparse.Namespace) -> Path:
     suite_path = Path(args.suite)
     suite = load_suite(suite_path)
 
-    first_payload, _ = build_payload(suite["cases"][0], args.api_model)
+    prepared_cases = []
+    for case in suite["cases"]:
+        payload, prompt_info = build_payload(case, args.api_model)
+        prepared_cases.append(
+            (case, payload, prompt_info, request_digest(payload))
+        )
+
+    first_payload = prepared_cases[0][1]
     for _ in range(args.warmups):
         try:
             post_json(args.url, first_payload, args.timeout)
@@ -196,8 +217,7 @@ def run_benchmark(args: argparse.Namespace) -> Path:
             print(f"Warm-up failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     observations: list[dict[str, Any]] = []
-    for case in suite["cases"]:
-        payload, prompt_info = build_payload(case, args.api_model)
+    for case, payload, prompt_info, _ in prepared_cases:
         for repetition in range(1, args.repeats + 1):
             started = time.perf_counter()
             try:
@@ -243,7 +263,14 @@ def run_benchmark(args: argparse.Namespace) -> Path:
             "suite_id": suite["suite_id"],
             "version": suite["version"],
             "sha256": _suite_digest(suite_path),
-            "cases": [{"id": case["id"], "prompt": case["prompt"]} for case in suite["cases"]],
+            "cases": [
+                {
+                    "id": case["id"],
+                    "prompt": case["prompt"],
+                    "request_sha256": digest,
+                }
+                for case, _, _, digest in prepared_cases
+            ],
         },
         "model": {"label": label, "api_model": args.api_model, "url": args.url},
         "run": {
@@ -295,6 +322,14 @@ def validate_compatible_runs(runs: list[dict[str, Any]]) -> None:
                 if isinstance(case, dict)
             ],
         ),
+        (
+            "request digests",
+            lambda run: [
+                case.get("request_sha256")
+                for case in run.get("suite", {}).get("cases", [])
+                if isinstance(case, dict)
+            ],
+        ),
         ("repeat count", lambda run: run.get("run", {}).get("repeats")),
     )
     for name, getter in checks:
@@ -302,6 +337,33 @@ def validate_compatible_runs(runs: list[dict[str, Any]]) -> None:
         for run in runs[1:]:
             if getter(run) != expected:
                 raise ValueError(f"Cannot compare runs with different {name}.")
+
+    for run in runs:
+        cases = run.get("suite", {}).get("cases", [])
+        case_ids = [
+            case.get("id")
+            for case in cases
+            if isinstance(case, dict) and isinstance(case.get("id"), str)
+        ]
+        repeats = run.get("run", {}).get("repeats")
+        observations = run.get("observations")
+        if not isinstance(repeats, int) or repeats < 1 or not isinstance(observations, list):
+            raise ValueError("Benchmark run has invalid observation metadata.")
+
+        expected_pairs = {
+            (case_id, repetition)
+            for case_id in case_ids
+            for repetition in range(1, repeats + 1)
+        }
+        actual_pairs = [
+            (item.get("case_id"), item.get("repetition"))
+            for item in observations
+            if isinstance(item, dict)
+        ]
+        if len(actual_pairs) != len(expected_pairs) or set(actual_pairs) != expected_pairs:
+            raise ValueError(
+                "Benchmark run has missing, unknown, or duplicate observation pairs."
+            )
 
 
 def _metric_summary(values: list[int | float]) -> dict[str, int | float] | None:

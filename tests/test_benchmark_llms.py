@@ -110,6 +110,25 @@ class RequestAndMetricTests(unittest.TestCase):
         self.assertIsNone(metrics["server_generation_tps"])
         self.assertIsNone(metrics["end_to_end_output_tps"])
 
+    def test_request_digest_ignores_model_name_but_tracks_effective_prompt(self) -> None:
+        payload, _ = benchmark_llms.build_payload(
+            {"id": "identity", "prompt": "Who are you?", "max_words": 20},
+            "first-model",
+        )
+        other_model = deepcopy(payload)
+        other_model["model"] = "second-model"
+        changed_request = deepcopy(payload)
+        changed_request["temperature"] = 0.1
+
+        self.assertEqual(
+            benchmark_llms.request_digest(payload),
+            benchmark_llms.request_digest(other_model),
+        )
+        self.assertNotEqual(
+            benchmark_llms.request_digest(payload),
+            benchmark_llms.request_digest(changed_request),
+        )
+
 
 class ValidationTests(unittest.TestCase):
     def test_module_import_emits_no_deprecation_warnings(self) -> None:
@@ -160,6 +179,21 @@ class ValidationTests(unittest.TestCase):
             {"reasoning_markup", "markdown", "max_words", "forbidden_content"},
         )
         self.assertTrue(result["checks"]["required_content"])
+
+    def test_response_checks_reject_empty_and_common_markdown(self) -> None:
+        case = {"id": "plain", "prompt": "Speak plainly.", "max_words": 20}
+
+        empty = benchmark_llms.evaluate_response(case, "   ")
+        markdown_results = [
+            benchmark_llms.evaluate_response(case, text)
+            for text in ("* item", "\x60code\x60", "*emphasis*")
+        ]
+
+        self.assertFalse(empty["checks"]["non_empty"])
+        self.assertIn("non_empty", empty["failures"])
+        for result in markdown_results:
+            self.assertFalse(result["checks"]["markdown"])
+            self.assertIn("markdown", result["failures"])
 
 
 class RunTests(unittest.TestCase):
@@ -222,8 +256,57 @@ class RunTests(unittest.TestCase):
         self.assertIsNone(observations[1]["error"])
         self.assertEqual(observations[1]["response"], "Artemis online.")
         self.assertEqual(observations[1]["metrics"]["server_generation_tps"], 8.0)
+        self.assertEqual(len(saved["suite"]["cases"][0]["request_sha256"]), 64)
         self.assertNotIn("system_prompt", saved)
         self.assertNotIn("messages", saved)
+
+    def test_response_without_usage_or_timings_keeps_text_and_null_metrics(self) -> None:
+        response = {
+            "choices": [
+                {
+                    "message": {"content": "I am Artemis."},
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            suite_path = root / "suite.json"
+            suite_path.write_text(
+                json.dumps(
+                    {
+                        "suite_id": "small-suite",
+                        "version": 1,
+                        "cases": [
+                            {
+                                "id": "identity",
+                                "prompt": "Who are you?",
+                                "max_words": 20,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                label="test-model",
+                url="http://127.0.0.1:8080/v1/chat/completions",
+                api_model="local-test",
+                suite=suite_path,
+                repeats=1,
+                warmups=0,
+                timeout=1.0,
+                output_dir=root / "results",
+            )
+            with patch.object(benchmark_llms, "post_json", return_value=response):
+                result_path = benchmark_llms.run_benchmark(args)
+            observation = json.loads(result_path.read_text(encoding="utf-8"))[
+                "observations"
+            ][0]
+
+        self.assertEqual(observation["response"], "I am Artemis.")
+        self.assertIsNone(observation["metrics"]["server_prompt_tps"])
+        self.assertIsNone(observation["metrics"]["server_generation_tps"])
 
 
 def sample_run(label: str = "model-a") -> dict:
@@ -234,8 +317,16 @@ def sample_run(label: str = "model-a") -> dict:
             "version": 1,
             "sha256": "abc123",
             "cases": [
-                {"id": "identity", "prompt": "Who are you?"},
-                {"id": "status", "prompt": "Anything to report?"},
+                {
+                    "id": "identity",
+                    "prompt": "Who are you?",
+                    "request_sha256": "request-one",
+                },
+                {
+                    "id": "status",
+                    "prompt": "Anything to report?",
+                    "request_sha256": "request-two",
+                },
             ],
         },
         "model": {
@@ -299,7 +390,16 @@ class ComparisonTests(unittest.TestCase):
             "version": lambda run: run["suite"].update(version=2),
             "digest": lambda run: run["suite"].update(sha256="different"),
             "case IDs": lambda run: run["suite"].update(
-                cases=[{"id": "other", "prompt": "Different"}]
+                cases=[
+                    {
+                        "id": "other",
+                        "prompt": "Different",
+                        "request_sha256": "request-other",
+                    }
+                ]
+            ),
+            "request digests": lambda run: run["suite"]["cases"][0].update(
+                request_sha256="different"
             ),
             "repeat count": lambda run: run["run"].update(repeats=2),
         }
@@ -309,6 +409,23 @@ class ComparisonTests(unittest.TestCase):
                 changed = deepcopy(original)
                 mutate(changed)
                 with self.assertRaisesRegex(ValueError, expected):
+                    benchmark_llms.validate_compatible_runs([original, changed])
+
+    def test_unknown_missing_or_duplicate_observation_pairs_are_rejected(self) -> None:
+        original = sample_run()
+        mutations = {
+            "unknown": lambda run: run["observations"][0].update(case_id="other"),
+            "missing": lambda run: run["observations"].pop(),
+            "duplicate": lambda run: run["observations"].append(
+                deepcopy(run["observations"][0])
+            ),
+        }
+
+        for expected, mutate in mutations.items():
+            with self.subTest(expected=expected):
+                changed = deepcopy(original)
+                mutate(changed)
+                with self.assertRaisesRegex(ValueError, "observation"):
                     benchmark_llms.validate_compatible_runs([original, changed])
 
     def test_summary_ignores_errors_but_reports_their_count(self) -> None:
