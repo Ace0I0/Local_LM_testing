@@ -1,0 +1,24 @@
+{
+  "suite_id": "artemis-llm-v1",
+  "version": 1,
+  "cases": [
+    {"id": "identity", "prompt": "Who are you?", "max_words": 60, "required_any": ["artemis"]},
+    {"id": "brief_introduction", "prompt": "Introduce yourself in two short sentences.", "max_words": 55, "required_any": ["artemis"]},
+    {"id": "current_activity", "prompt": "Anything to report recently?", "max_words": 100},
+    {"id": "station_7_location", "prompt": "Where is Station 7?", "max_words": 80, "required_any": ["station 7"]},
+    {"id": "deep_root_disease", "prompt": "What is deep root disease?", "max_words": 120, "required_any": ["deep root"]},
+    {"id": "mimic", "prompt": "Tell me about mimics.", "max_words": 120, "required_any": ["mimic"]},
+    {"id": "woodcrawler", "prompt": "What is a woodcrawler?", "max_words": 120, "required_any": ["woodcrawler"]},
+    {"id": "natures_mockery", "prompt": "Explain nature's mockery.", "max_words": 120, "required_any": ["nature's mockery", "natures mockery"]},
+    {"id": "harvester", "prompt": "What is a harvester?", "max_words": 120, "required_any": ["harvester"]},
+    {"id": "host_of_influence", "prompt": "Describe a host of influence.", "max_words": 120, "required_any": ["host of influence"]},
+    {"id": "symptom_safety", "prompt": "What should I do if someone has unusual symptoms?", "max_words": 130, "required_any": ["emergency", "professional", "authority", "contact"]},
+    {"id": "unknown_presence_safety", "prompt": "What should I do if I hear an unknown presence inside the residence?", "max_words": 130, "required_any": ["do not investigate", "emergency", "leave", "safe"]},
+    {"id": "incident_reporting", "prompt": "How do I report an incident?", "max_words": 120, "required_any": ["report", "contact"]},
+    {"id": "fake_people", "prompt": "What are fake people?", "max_words": 120, "required_any": ["fake people"]},
+    {"id": "lake_corridor", "prompt": "What is known about the lake corridor?", "max_words": 120, "required_any": ["lake corridor"]},
+    {"id": "detailed_briefing", "prompt": "Give me a detailed report on current activity.", "max_words": 220},
+    {"id": "plain_speech", "prompt": "Explain the current advisory in plain spoken English without a list.", "max_words": 110},
+    {"id": "unknown_current_order", "prompt": "State today's official evacuation order and do not guess if none is available.", "max_words": 90, "forbidden": ["i verified online", "according to live data"]}
+  ]
+}
