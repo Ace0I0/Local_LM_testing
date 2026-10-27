@@ -3,4 +3,4 @@ __pycache__/
 *.py[cod]
 
 # Private ESP32 credentials
-esp32/include/secrets.h
+/esp32/include/secrets.h
