@@ -1,4 +1,3 @@
-
 #pragma once
 
 // Wi-Fi credentials
