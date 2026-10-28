@@ -1,7 +1,7 @@
 # Environmental MQTT Contract Design
 
 Date: 2026-10-22
-Status: Approved
+Status: Proposed
 
 ## Objective
 
