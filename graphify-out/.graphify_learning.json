@@ -1,0 +1,271 @@
+{
+  "generated_at": "2026-10-28T19:46:11.097652+00:00",
+  "nodes": {
+    "docs_superpowers_plans_2026_10_22_mosquitto_first_slice_broker_acceptance_checks": {
+      "code_fingerprint": "e08f4699a715665e044c62ac94c6c941ba04dd852ad40cb06e2cb363876ecec4",
+      "label": "Broker Acceptance Checks",
+      "last": "2026-10-28T18:52:03.982755+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T18:52:03.982755+00:00",
+          "outcome": "useful",
+          "q": "I can handle SSHing into the Pi; tell me what to do there."
+        },
+        {
+          "date": "2026-10-28T18:49:18.668794+00:00",
+          "outcome": "useful",
+          "q": "Artemis and Mosquitto will both run on the Raspberry Pi; SSH access is available for testing or coding."
+        }
+      ],
+      "score": 1.998219912,
+      "source_file": "docs/superpowers/plans/2026-10-22-mosquitto-first-slice.md",
+      "status": "preferred",
+      "uses": 2
+    },
+    "docs_superpowers_plans_2026_10_22_mosquitto_first_slice_setup_wizard": {
+      "code_fingerprint": "e08f4699a715665e044c62ac94c6c941ba04dd852ad40cb06e2cb363876ecec4",
+      "label": "Mosquitto Setup Wizard",
+      "last": "2026-10-28T18:52:03.982755+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T18:52:03.982755+00:00",
+          "outcome": "useful",
+          "q": "I can handle SSHing into the Pi; tell me what to do there."
+        },
+        {
+          "date": "2026-10-28T18:49:18.668794+00:00",
+          "outcome": "useful",
+          "q": "Artemis and Mosquitto will both run on the Raspberry Pi; SSH access is available for testing or coding."
+        }
+      ],
+      "score": 1.998219912,
+      "source_file": "docs/superpowers/plans/2026-10-22-mosquitto-first-slice.md",
+      "status": "preferred",
+      "uses": 2
+    },
+    "python_scripts_intent_router": {
+      "code_fingerprint": "5679dc80dd77d299c60cf05dc30000818f16bc7574acd52922195829d1983d6d",
+      "label": "intent_router.py",
+      "last": "2026-10-28T19:42:44.774641+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T19:42:44.774641+00:00",
+          "outcome": "useful",
+          "q": "Live test of what is the living room temp returned an invented 72 degrees and shelter instruction."
+        },
+        {
+          "date": "2026-10-28T19:06:10.488466+00:00",
+          "outcome": "useful",
+          "q": "Is the current Artemis actually a live LLM, or just hardcoded responses?"
+        },
+        {
+          "date": "2026-10-28T19:03:29.704016+00:00",
+          "outcome": "useful",
+          "q": "Artemis crashes with ConnectionRefusedError after entering test. What is the issue?"
+        }
+      ],
+      "score": 2.998618339,
+      "source_file": "Python_Scripts/intent_router.py",
+      "status": "preferred",
+      "uses": 3
+    },
+    "python_scripts_intent_router_choose_primary_intent": {
+      "code_fingerprint": "5679dc80dd77d299c60cf05dc30000818f16bc7574acd52922195829d1983d6d",
+      "label": "_choose_primary_intent()",
+      "last": "2026-10-28T19:42:44.774641+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T19:42:44.774641+00:00",
+          "outcome": "useful",
+          "q": "Live test of what is the living room temp returned an invented 72 degrees and shelter instruction."
+        }
+      ],
+      "score": 0.999944827,
+      "source_file": "Python_Scripts/intent_router.py",
+      "status": "tentative",
+      "uses": 1
+    },
+    "python_scripts_load_llm_sam_run_interactive": {
+      "code_fingerprint": "137ae28774b9cf54b68afc7bdad28de0d298f9eaea09c668bfa742ecac93db4e",
+      "label": "run_interactive()",
+      "last": "2026-10-28T19:03:29.704016+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T19:03:29.704016+00:00",
+          "outcome": "useful",
+          "q": "Artemis crashes with ConnectionRefusedError after entering test. What is the issue?"
+        }
+      ],
+      "score": 0.999315272,
+      "source_file": "Python_Scripts/load_llm_sam.py",
+      "status": "tentative",
+      "uses": 1
+    },
+    "python_scripts_mqtt_sensor_client_mqttsensorclient": {
+      "code_fingerprint": "69f55f8998c126a9eb8ecc219bd83c9b5e4cee169e2c6bff3cd0b0013e1ff145",
+      "label": "MqttSensorClient",
+      "last": "2026-10-28T19:03:29.704016+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T19:03:29.704016+00:00",
+          "outcome": "useful",
+          "q": "Artemis crashes with ConnectionRefusedError after entering test. What is the issue?"
+        },
+        {
+          "date": "2026-10-28T18:52:03.982755+00:00",
+          "outcome": "useful",
+          "q": "I can handle SSHing into the Pi; tell me what to do there."
+        },
+        {
+          "date": "2026-10-28T18:49:18.668794+00:00",
+          "outcome": "useful",
+          "q": "Artemis and Mosquitto will both run on the Raspberry Pi; SSH access is available for testing or coding."
+        },
+        {
+          "date": "2026-10-28T18:40:40.552877+00:00",
+          "outcome": "useful",
+          "q": "Now that ESP32 Wi-Fi and Home Assistant temperature/humidity work, should work continue on ESP32 code or move to the LLM/SLM side?"
+        }
+      ],
+      "score": 3.996484638,
+      "source_file": "Python_Scripts/mqtt_sensor_client.py",
+      "status": "preferred",
+      "uses": 4
+    },
+    "python_scripts_sensor_answers_build_sensor_answer": {
+      "code_fingerprint": "89e65864fd513cb89b86191d9bbfe966a03077e85469ea1375a90dea6a613017",
+      "label": "build_sensor_answer()",
+      "last": "2026-10-28T19:42:44.774641+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T19:42:44.774641+00:00",
+          "outcome": "useful",
+          "q": "Live test of what is the living room temp returned an invented 72 degrees and shelter instruction."
+        },
+        {
+          "date": "2026-10-28T19:06:10.488466+00:00",
+          "outcome": "useful",
+          "q": "Is the current Artemis actually a live LLM, or just hardcoded responses?"
+        },
+        {
+          "date": "2026-10-28T18:40:40.552877+00:00",
+          "outcome": "useful",
+          "q": "Now that ESP32 Wi-Fi and Home Assistant temperature/humidity work, should work continue on ESP32 code or move to the LLM/SLM side?"
+        }
+      ],
+      "score": 2.998252521,
+      "source_file": "Python_Scripts/sensor_answers.py",
+      "status": "preferred",
+      "uses": 3
+    },
+    "python_scripts_token_budget": {
+      "code_fingerprint": "a21b044dfda4251739bb57e30bc9799082b8ad76a570452ee14d91195ed77722",
+      "label": "token_budget.py",
+      "last": "2026-10-28T19:13:18.286457+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T19:13:18.286457+00:00",
+          "outcome": "useful",
+          "q": "Can Pi llama-server build 8770 run the selected Qwen3.5 2B model, and what setup should follow?"
+        },
+        {
+          "date": "2026-10-28T19:10:58.237246+00:00",
+          "outcome": "useful",
+          "q": "Which efficient lightweight LLM should Artemis use through llama-server, with models swappable when needed?"
+        }
+      ],
+      "score": 1.998907717,
+      "source_file": "Python_Scripts/token_budget.py",
+      "status": "preferred",
+      "uses": 2
+    },
+    "readme_artemis_local_llm_voice_assistant": {
+      "code_fingerprint": "7771b15fab95dc56e5dcfc54a663da9c5f062a4ef93a20554644a66590518ad2",
+      "label": "Artemis Local LLM Voice Assistant",
+      "last": "2026-10-28T18:52:03.982755+00:00",
+      "provenance": [
+        {
+          "date": "2026-10-28T18:52:03.982755+00:00",
+          "outcome": "useful",
+          "q": "I can handle SSHing into the Pi; tell me what to do there."
+        },
+        {
+          "date": "2026-10-28T18:49:18.668794+00:00",
+          "outcome": "useful",
+          "q": "Artemis and Mosquitto will both run on the Raspberry Pi; SSH access is available for testing or coding."
+        },
+        {
+          "date": "2026-10-28T18:40:40.552877+00:00",
+          "outcome": "useful",
+          "q": "Now that ESP32 Wi-Fi and Home Assistant temperature/humidity work, should work continue on ESP32 code or move to the LLM/SLM side?"
+        }
+      ],
+      "score": 2.997169366,
+      "source_file": "README.md",
+      "status": "preferred",
+      "uses": 3
+    },
+    "readme_llama_server": {
+      "code_fingerprint": "7771b15fab95dc56e5dcfc54a663da9c5f062a4ef93a20554644a66590518ad2",
+      "label": "llama-server",
+      "last": "2026-10-28T19:17:02.827581+00:00",
+      "neg": 1,
+      "provenance": [
+        {
+          "date": "2026-10-28T19:17:02.827581+00:00",
+          "outcome": "corrected",
+          "q": "Qwen3.5 2B fails on Pi llama-server 8770 with missing tensor blk.24.ssm_conv1d.weight."
+        },
+        {
+          "date": "2026-10-28T19:13:18.286457+00:00",
+          "outcome": "useful",
+          "q": "Can Pi llama-server build 8770 run the selected Qwen3.5 2B model, and what setup should follow?"
+        },
+        {
+          "date": "2026-10-28T19:10:58.237246+00:00",
+          "outcome": "useful",
+          "q": "Which efficient lightweight LLM should Artemis use through llama-server, with models swappable when needed?"
+        }
+      ],
+      "score": 0.999375126,
+      "source_file": "README.md",
+      "status": "contested",
+      "uses": 2,
+      "verdict": "useful"
+    },
+    "readme_local_llm_benchmark": {
+      "code_fingerprint": "7771b15fab95dc56e5dcfc54a663da9c5f062a4ef93a20554644a66590518ad2",
+      "label": "Local LLM Benchmark",
+      "last": "2026-10-28T19:17:02.827581+00:00",
+      "neg": 1,
+      "provenance": [
+        {
+          "date": "2026-10-28T19:17:02.827581+00:00",
+          "outcome": "corrected",
+          "q": "Qwen3.5 2B fails on Pi llama-server 8770 with missing tensor blk.24.ssm_conv1d.weight."
+        },
+        {
+          "date": "2026-10-28T19:13:18.286457+00:00",
+          "outcome": "useful",
+          "q": "Can Pi llama-server build 8770 run the selected Qwen3.5 2B model, and what setup should follow?"
+        },
+        {
+          "date": "2026-10-28T19:10:58.237246+00:00",
+          "outcome": "useful",
+          "q": "Which efficient lightweight LLM should Artemis use through llama-server, with models swappable when needed?"
+        },
+        {
+          "date": "2026-10-28T18:40:40.552877+00:00",
+          "outcome": "useful",
+          "q": "Now that ESP32 Wi-Fi and Home Assistant temperature/humidity work, should work continue on ESP32 code or move to the LLM/SLM side?"
+        }
+      ],
+      "score": 1.998324581,
+      "source_file": "README.md",
+      "status": "contested",
+      "uses": 3,
+      "verdict": "useful"
+    }
+  },
+  "version": 1
+}

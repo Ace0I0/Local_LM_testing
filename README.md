@@ -182,6 +182,12 @@ Initial supported questions include:
 - `What is the humidity?`
 - `How are conditions in the living room?`
 
+How to start up our Qwen3.5-2B LLM
+
+```bash
+ /home/pi/llama.cpp/build-current/bin/llama-server   -m /home/pi/models/qwen/Qwen3.5-2B-Q4_K_M.gguf   --host 127.0.0.1   --port 8080   -c 8192   --jinja   --chat-template-kwargs '{"enable_thinking":false}'
+```
+
 MQTT measurements remain Celsius internally. Artemis presents Fahrenheit by default and uses Celsius when requested explicitly. A measurement becomes unavailable after 180 seconds without an update. General condition reports omit unavailable measurements; a direct question says only that no current reading is available. Broker downtime does not stop non-sensor questions.
 
 The setup wizard's retained sample is accepted when Artemis starts, but it becomes unavailable after 180 seconds because it is not a live sensor. The future ESPHome node will refresh it every 60 seconds.
