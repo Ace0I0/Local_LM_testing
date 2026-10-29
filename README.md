@@ -2,10 +2,10 @@
 
 ![Status](https://img.shields.io/badge/status-prototype-orange)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205-red)
-![Model](https://img.shields.io/badge/model-Qwen2.5%201.5B-green)
+![Model](https://img.shields.io/badge/model-Qwen3.5%202B-green)
 ![TTS](https://img.shields.io/badge/TTS-SAM-lightgrey)
 
-Artemis is an offline-first voice assistant prototype built around a local large language model, local knowledge files, and retro SAM text-to-speech. The current target is a Raspberry Pi 5 with 16 GB of RAM running Qwen2.5 1.5B Instruct through `llama.cpp`.
+Artemis is an offline-first voice assistant prototype built around a local large language model, local knowledge files, and retro SAM text-to-speech. The current target is a Raspberry Pi 5 with 16 GB of RAM running Qwen3.5 2B through `llama.cpp`.
 
 The project currently focuses on an Emergency Alert System-inspired personality. It routes each prompt by intent and topic, loads only the relevant local knowledge, keeps the prompt within a fixed token budget, requests a response from the local model, and renders the result to a WAV file through SAM.
 
@@ -19,7 +19,7 @@ The project currently focuses on an Emergency Alert System-inspired personality.
 - Retro speech output through SAM
 - Debug output for routing, prompt size, model timing, and token usage
 - A lightweight router test that does not call the model or SAM
-- Read-only MQTT temperature and humidity answers that bypass the LLM
+- Read-only MQTT temperature and humidity answers narrated from validated facts by the local LLM
 
 ## How it works
 
@@ -41,6 +41,8 @@ The active request path is:
 3. `token_budget.py` selects and trims relevant files from `memory/knowledge/`.
 4. The controller sends the assembled prompt to the local `llama-server` endpoint.
 5. The response is converted to a WAV file by SAM.
+
+Sensor questions take a narrower branch: Artemis resolves a validated MQTT-backed answer plan, gives only those formatted facts to Qwen, validates the returned sentence, and then sends it to SAM. Invalid or unavailable model output uses the deterministic factual answer instead.
 
 Inputs that receive no intent or topic score are logged to `unrecognized_inputs.txt` for later router tuning. They do not call the LLM.
 
@@ -64,7 +66,7 @@ Archive/             Older experiments and tests kept for reference
 - [`rapidfuzz`](https://github.com/rapidfuzz/RapidFuzz)
 - [`paho-mqtt`](https://github.com/eclipse-paho/paho.mqtt.python)
 - A local [`llama.cpp`](https://github.com/ggml-org/llama.cpp) build containing `llama-server`
-- [Qwen2.5 1.5B Instruct GGUF](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), currently using the `Q4_K_M` quantization
+- A Qwen3.5 2B GGUF, currently using the `Q4_K_M` quantization
 - [SAM: Software Automatic Mouth](https://github.com/s-macke/SAM)
 
 The current hardware target is a Raspberry Pi 5 with 16 GB of RAM. Development and router testing can be done elsewhere, but the default SAM paths are Pi-specific.
@@ -81,14 +83,16 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Download `qwen2.5-1.5b-instruct-q4_k_m.gguf` from the model page linked above, then start the local server:
+Place `Qwen3.5-2B-Q4_K_M.gguf` under `~/models/qwen/`, then start the local server with thinking disabled:
 
 ```bash
-~/llama.cpp/build/bin/llama-server \
-  -m ~/models/qwen/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+~/llama.cpp/build-current/bin/llama-server \
+  -m ~/models/qwen/Qwen3.5-2B-Q4_K_M.gguf \
   --host 127.0.0.1 \
   --port 8080 \
-  -c 8192
+  -c 8192 \
+  --jinja \
+  --chat-template-kwargs '{"enable_thinking":false}'
 ```
 
 Build SAM separately and confirm these constants in `Python_Scripts/load_llm_sam.py` match your installation:
@@ -183,6 +187,8 @@ Initial supported questions include:
 - `How are conditions in the living room?`
 
 MQTT measurements remain Celsius internally. Artemis presents Fahrenheit by default and uses Celsius when requested explicitly. A measurement becomes unavailable after 180 seconds without an update. General condition reports omit unavailable measurements; a direct question says only that no current reading is available. Broker downtime does not stop non-sensor questions.
+
+Every routed sensor question is offered to the local Qwen model for one-sentence phrasing. The model receives only the resolved location, requested measurement, formatted value and unit, or availability fact. Artemis rejects changed values or units, extra numbers, swapped measurements, interpretations, warnings, advice, Markdown, and extra sentences. Rejected output, malformed responses, connection errors, or the 60-second sensor timeout use the existing deterministic answer and keep Artemis running.
 
 The setup wizard's retained sample is accepted when Artemis starts, but it becomes unavailable after 180 seconds because it is not a live sensor. The future ESPHome node will refresh it every 60 seconds.
 

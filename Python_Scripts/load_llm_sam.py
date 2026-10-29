@@ -5,6 +5,7 @@ import threading
 import json
 import os
 import subprocess
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,11 @@ from typing import Callable, Mapping, Optional
 # The controller imports the router and budget helpers once, then calls them for
 # every user turn inside the main prompt-building path.
 from intent_router import analyze_query, route_intent, print_router_debug
-from sensor_answers import build_sensor_answer
+from sensor_answers import (
+    SensorAnswerPlan,
+    build_sensor_answer_plan,
+    validate_sensor_narration,
+)
 from sensor_state import SensorState
 import token_budget as budget
 
@@ -34,6 +39,8 @@ DIM = "\033[2m"
 
 # Load LM with this URL on PI
 LLAMA_SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
+SENSOR_RESPONSE_TOKENS = 64
+SENSOR_REQUEST_TIMEOUT_SECONDS = 60.0
 
 SAM_BINARY = Path("/home/pi/SAM/sam")
 OUTPUT_WAV = Path("/home/pi/SAM/robot_response.wav")
@@ -445,7 +452,12 @@ def build_system_prompt(
 
     return system_prompt, debug_info
 
-def ask_local_model(user_text: str, system_prompt: str, response_tokens: int) -> tuple[str, dict]:
+def ask_local_model(
+    user_text: str,
+    system_prompt: str,
+    response_tokens: int,
+    timeout: float | None = None,
+) -> tuple[str, dict]:
     settings = get_generation_settings(user_text)
     # This is the actual llama-server call site; the computed response token
     # budget is passed through here.
@@ -475,7 +487,12 @@ def ask_local_model(user_text: str, system_prompt: str, response_tokens: int) ->
         method="POST",
     )
 
-    with urllib.request.urlopen(request) as response:
+    if timeout is None:
+        response_context = urllib.request.urlopen(request)
+    else:
+        response_context = urllib.request.urlopen(request, timeout=timeout)
+
+    with response_context as response:
         result = json.loads(response.read().decode("utf-8"))
     request_elapsed = time.perf_counter() - request_started
 
@@ -629,15 +646,73 @@ def make_sam_wav(text: str, identity: dict) -> None:
     subprocess.run(cmd, check=True)
 
 
+def build_sensor_narration_prompt(
+    identity: dict,
+    mode: dict,
+    plan: SensorAnswerPlan,
+) -> str:
+    name = identity.get("name", "Artemis")
+    robot_type = identity.get("type", "retro animatronic robot")
+    tone = ", ".join(mode.get("tone", [])) or "plain and direct"
+    facts = []
+    if plan.location is not None:
+        facts.append(f"Location: {plan.location}")
+    facts.extend(
+        f"{fact.measurement}: {fact.value} {fact.unit}"
+        for fact in plan.facts
+    )
+    if not plan.facts:
+        facts.append(f"Availability fact: {plan.fallback}")
+
+    return "\n".join(
+        [
+            f"You are {name}, a {robot_type}.",
+            f"Current mode: {mode.get('display_name', 'EAS Mode')}",
+            f"Tone: {tone}",
+            "",
+            "Trusted sensor facts:",
+            *facts,
+            "",
+            "Rephrase only the trusted sensor facts as one short plain-English sentence.",
+            "Include the exact location, measurement names, values, and units supplied.",
+            "Keep each value paired with its measurement and unit.",
+            "Do not calculate, interpret, compare, warn, advise, or add any fact or number.",
+            "Return only the sentence without Markdown, labels, or commentary.",
+        ]
+    )
+
+
 def handle_sensor_turn(
     user_text: str,
     route: dict,
     state: SensorState,
     identity: dict,
+    mode: dict,
 ) -> bool:
-    robot_text = build_sensor_answer(user_text, route, state)
-    if robot_text is None:
+    plan = build_sensor_answer_plan(user_text, route, state)
+    if plan is None:
         return False
+
+    system_prompt = build_sensor_narration_prompt(identity, mode, plan)
+    try:
+        narration, _ = ask_local_model(
+            user_text,
+            system_prompt,
+            SENSOR_RESPONSE_TOKENS,
+            timeout=SENSOR_REQUEST_TIMEOUT_SECONDS,
+        )
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+        KeyError,
+        IndexError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        debug_log(f"sensor narration fallback: {type(exc).__name__}")
+        narration = ""
+    robot_text = narration if validate_sensor_narration(narration, plan) else plan.fallback
 
     print(f"{PURPLE}{identity.get('name', 'Artemis')}{RESET}: {robot_text}")
     make_sam_wav(robot_text, identity)
@@ -734,7 +809,7 @@ def run_interactive(identity: dict, mode: dict, sensor_state: SensorState) -> No
         total_start = time.perf_counter()
         route = route_intent(user_text)
 
-        if handle_sensor_turn(user_text, route, sensor_state, identity):
+        if handle_sensor_turn(user_text, route, sensor_state, identity, mode):
             print()
             continue
 
