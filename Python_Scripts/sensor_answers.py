@@ -16,9 +16,9 @@ _NAMED_LOCATION = re.compile(
 _LEADING_LOCATION_PATTERNS = (
     re.compile(
         r"^(?:what is|what s)\s+"
-        r"(?!the\s+(?:temperature|humidity)$)(?:the\s+)?"
+        r"(?!the\s+(?:temperature|temp|humidity)$)(?:the\s+)?"
         r"(?P<location>[a-z0-9]+(?:\s+[a-z0-9]+)*)\s+"
-        r"(?:temperature|humidity)$"
+        r"(?:temperature|temp|humidity)$"
     ),
     re.compile(
         r"^how humid is\s+(?:the\s+)?"

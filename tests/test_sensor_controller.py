@@ -1,4 +1,5 @@
 from contextlib import redirect_stdout
+import http.client
 from io import StringIO
 import json
 import unittest
@@ -167,6 +168,92 @@ class SensorControllerTests(unittest.TestCase):
                 output = StringIO()
                 with (
                     patch.object(controller, "ask_local_model", side_effect=error),
+                    patch.object(controller, "make_sam_wav") as speak,
+                    redirect_stdout(output),
+                ):
+                    handled = controller.handle_sensor_turn(
+                        "what is the temperature",
+                        route,
+                        state,
+                        {"name": "Artemis"},
+                        {"display_name": "EAS Mode", "tone": []},
+                    )
+
+                self.assertTrue(handled)
+                self.assertIn(fallback, output.getvalue())
+                speak.assert_called_once_with(fallback, {"name": "Artemis"})
+
+    def test_sensor_turn_falls_back_on_non_text_http_content(self) -> None:
+        class FakeResponse:
+            def __init__(self, content: object) -> None:
+                self.content = content
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self) -> bytes:
+                return json.dumps(
+                    {"choices": [{"message": {"content": self.content}}]}
+                ).encode("utf-8")
+
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/living_room/sensor/temperature/state",
+            b"21.5",
+        )
+        route = {"primary_intent": "sensor_query", "topics": ["temperature"]}
+        fallback = "The living room temperature is 70.7 degrees Fahrenheit."
+
+        for content in (None, {}, [], 72):
+            with self.subTest(content=content):
+                output = StringIO()
+                with (
+                    patch.object(
+                        controller.urllib.request,
+                        "urlopen",
+                        return_value=FakeResponse(content),
+                    ),
+                    patch.object(controller, "make_sam_wav") as speak,
+                    redirect_stdout(output),
+                ):
+                    handled = controller.handle_sensor_turn(
+                        "what is the temperature",
+                        route,
+                        state,
+                        {"name": "Artemis"},
+                        {"display_name": "EAS Mode", "tone": []},
+                    )
+
+                self.assertTrue(handled)
+                self.assertIn(fallback, output.getvalue())
+                speak.assert_called_once_with(fallback, {"name": "Artemis"})
+
+    def test_sensor_turn_falls_back_on_interrupted_http_responses(self) -> None:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/living_room/sensor/temperature/state",
+            b"21.5",
+        )
+        route = {"primary_intent": "sensor_query", "topics": ["temperature"]}
+        fallback = "The living room temperature is 70.7 degrees Fahrenheit."
+        errors = (
+            http.client.RemoteDisconnected(),
+            http.client.IncompleteRead(b"partial"),
+            ConnectionResetError("connection reset"),
+        )
+
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                output = StringIO()
+                with (
+                    patch.object(
+                        controller.urllib.request,
+                        "urlopen",
+                        side_effect=error,
+                    ),
                     patch.object(controller, "make_sam_wav") as speak,
                     redirect_stdout(output),
                 ):

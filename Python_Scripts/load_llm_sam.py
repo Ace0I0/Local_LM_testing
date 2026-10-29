@@ -1,4 +1,5 @@
 import getpass
+import http.client
 import sys
 import time
 import threading
@@ -496,7 +497,10 @@ def ask_local_model(
         result = json.loads(response.read().decode("utf-8"))
     request_elapsed = time.perf_counter() - request_started
 
-    message = result["choices"][0]["message"]["content"].strip()
+    content = result["choices"][0]["message"]["content"]
+    if not isinstance(content, str):
+        raise TypeError("llama-server response content must be text")
+    message = content.strip()
     server_debug = {
         "request_elapsed": request_elapsed,
         "settings": settings,
@@ -704,6 +708,8 @@ def handle_sensor_turn(
     except (
         urllib.error.URLError,
         TimeoutError,
+        http.client.HTTPException,
+        ConnectionError,
         json.JSONDecodeError,
         KeyError,
         IndexError,

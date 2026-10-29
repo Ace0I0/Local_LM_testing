@@ -389,6 +389,28 @@ class SensorAnswerPlanEdgeCaseTests(unittest.TestCase):
             ),
         )
 
+    def test_temp_shorthand_preserves_an_unknown_named_location(self) -> None:
+        state = self.current_living_room()
+        route = analyze_query("what is the dining room temp")
+
+        plan = build_sensor_answer_plan(
+            "what is the dining room temp",
+            route,
+            state,
+        )
+
+        self.assertEqual(route["primary_intent"], "sensor_query")
+        self.assertEqual(
+            plan,
+            SensorAnswerPlan(
+                kind="unknown_location",
+                subject=None,
+                fallback="I do not have sensor information for the dining room.",
+                location="dining room",
+                facts=(),
+            ),
+        )
+
 
 class SensorAnswerTests(unittest.TestCase):
     def current_living_room(self) -> SensorState:
