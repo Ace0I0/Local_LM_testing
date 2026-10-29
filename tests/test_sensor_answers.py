@@ -13,6 +13,8 @@ class SensorRoutingTests(unittest.TestCase):
     def test_routes_environmental_questions_without_eas_knowledge(self) -> None:
         cases = (
             ("what is the living room temperature", "temperature"),
+            ("what is the living room temp", "temperature"),
+            ("tell me the room temperature", "temperature"),
             ("how humid is the living room", "humidity"),
             ("how are conditions in the living room", "environment"),
             ("what is the tempeture", "temperature"),
@@ -27,9 +29,15 @@ class SensorRoutingTests(unittest.TestCase):
                 self.assertEqual(route["selected_files"], [])
 
     def test_explanation_about_temperature_is_not_a_sensor_query(self) -> None:
-        route = analyze_query("what is the history of temperature measurement")
+        cases = (
+            "explain room temperature",
+            "what is the history of temperature measurement",
+        )
 
-        self.assertEqual(route["primary_intent"], "explanation")
+        for user_text in cases:
+            with self.subTest(user_text=user_text):
+                route = analyze_query(user_text)
+                self.assertEqual(route["primary_intent"], "explanation")
 
 
 class SensorAnswerTests(unittest.TestCase):
