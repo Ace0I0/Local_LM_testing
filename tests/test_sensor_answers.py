@@ -1,7 +1,13 @@
 import unittest
 
 from intent_router import analyze_query
-from sensor_answers import build_sensor_answer
+from sensor_answers import (
+    SensorAnswerPlan,
+    SensorFact,
+    build_sensor_answer,
+    build_sensor_answer_plan,
+    validate_sensor_narration,
+)
 from sensor_state import SensorState
 
 
@@ -13,6 +19,8 @@ class SensorRoutingTests(unittest.TestCase):
     def test_routes_environmental_questions_without_eas_knowledge(self) -> None:
         cases = (
             ("what is the living room temperature", "temperature"),
+            ("what is the living room temp", "temperature"),
+            ("tell me the room temperature", "temperature"),
             ("how humid is the living room", "humidity"),
             ("how are conditions in the living room", "environment"),
             ("what is the tempeture", "temperature"),
@@ -27,9 +35,381 @@ class SensorRoutingTests(unittest.TestCase):
                 self.assertEqual(route["selected_files"], [])
 
     def test_explanation_about_temperature_is_not_a_sensor_query(self) -> None:
-        route = analyze_query("what is the history of temperature measurement")
+        cases = (
+            "explain room temperature",
+            "what is the history of temperature measurement",
+        )
 
-        self.assertEqual(route["primary_intent"], "explanation")
+        for user_text in cases:
+            with self.subTest(user_text=user_text):
+                route = analyze_query(user_text)
+                self.assertEqual(route["primary_intent"], "explanation")
+
+
+class SensorAnswerPlanTests(unittest.TestCase):
+    def current_living_room(self) -> SensorState:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/living_room/sensor/temperature/state",
+            b"21.5",
+        )
+        state.ingest(
+            "artemis/sensors/living_room/sensor/humidity/state",
+            b"45.0",
+        )
+        state.ingest("artemis/sensors/living_room/status", b"online")
+        return state
+
+    def test_builds_formatted_temperature_and_combined_plans(self) -> None:
+        state = self.current_living_room()
+
+        temperature = build_sensor_answer_plan(
+            "what is the living room temperature",
+            sensor_route("temperature"),
+            state,
+        )
+        conditions = build_sensor_answer_plan(
+            "how are conditions in the living room",
+            sensor_route("environment"),
+            state,
+        )
+
+        self.assertEqual(
+            temperature,
+            SensorAnswerPlan(
+                kind="reading",
+                subject="temperature",
+                fallback="The living room temperature is 70.7 degrees Fahrenheit.",
+                location="living room",
+                facts=(SensorFact("temperature", "70.7", "degrees Fahrenheit"),),
+            ),
+        )
+        self.assertEqual(
+            conditions,
+            SensorAnswerPlan(
+                kind="reading",
+                subject="conditions",
+                fallback=(
+                    "The living room is 70.7 degrees Fahrenheit "
+                    "with 45 percent relative humidity."
+                ),
+                location="living room",
+                facts=(
+                    SensorFact("temperature", "70.7", "degrees Fahrenheit"),
+                    SensorFact("humidity", "45", "percent"),
+                ),
+            ),
+        )
+
+    def test_partial_conditions_plan_omits_the_unavailable_measurement(self) -> None:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/living_room/sensor/temperature/state",
+            b"21.5",
+        )
+
+        plan = build_sensor_answer_plan(
+            "how are conditions in the living room",
+            sensor_route("environment"),
+            state,
+        )
+
+        self.assertEqual(
+            plan,
+            SensorAnswerPlan(
+                kind="reading",
+                subject="conditions",
+                fallback="The living room temperature is 70.7 degrees Fahrenheit.",
+                location="living room",
+                facts=(SensorFact("temperature", "70.7", "degrees Fahrenheit"),),
+            ),
+        )
+
+
+class SensorNarrationValidationTests(unittest.TestCase):
+    def test_accepts_only_recognized_fact_preserving_shapes(self) -> None:
+        temperature = SensorAnswerPlan(
+            kind="reading",
+            subject="temperature",
+            fallback="The living room temperature is 70.7 degrees Fahrenheit.",
+            location="living room",
+            facts=(SensorFact("temperature", "70.7", "degrees Fahrenheit"),),
+        )
+        humidity = SensorAnswerPlan(
+            kind="reading",
+            subject="humidity",
+            fallback="The living room humidity is 45 percent.",
+            location="living room",
+            facts=(SensorFact("humidity", "45", "percent"),),
+        )
+        conditions = SensorAnswerPlan(
+            kind="reading",
+            subject="conditions",
+            fallback=(
+                "The living room is 70.7 degrees Fahrenheit "
+                "with 45 percent relative humidity."
+            ),
+            location="living room",
+            facts=(
+                SensorFact("temperature", "70.7", "degrees Fahrenheit"),
+                SensorFact("humidity", "45", "percent"),
+            ),
+        )
+        unavailable_humidity = SensorAnswerPlan(
+            kind="unavailable",
+            subject="humidity",
+            fallback="I do not have a current humidity reading for the living room.",
+            location="living room",
+            facts=(),
+        )
+        unavailable_conditions = SensorAnswerPlan(
+            kind="unavailable",
+            subject="conditions",
+            fallback="I do not have current sensor information for the living room.",
+            location="living room",
+            facts=(),
+        )
+        unknown = SensorAnswerPlan(
+            kind="unknown_location",
+            subject=None,
+            fallback="I do not have sensor information for the bedroom.",
+            location="bedroom",
+            facts=(),
+        )
+        no_locations = SensorAnswerPlan(
+            kind="no_locations",
+            subject=None,
+            fallback="I do not have any sensor locations yet.",
+            location=None,
+            facts=(),
+        )
+        clarification = SensorAnswerPlan(
+            kind="clarification",
+            subject=None,
+            fallback="Which location do you mean?",
+            location=None,
+            facts=(),
+        )
+
+        cases = (
+            (
+                "In the living room, the temperature is 70.7 degrees Fahrenheit.",
+                temperature,
+            ),
+            ("The humidity in the living room is currently 45 percent.", humidity),
+            (
+                "In the living room, the temperature is 70.7 degrees Fahrenheit "
+                "and the humidity is 45 percent.",
+                conditions,
+            ),
+            (
+                "There is no current humidity reading for the living room.",
+                unavailable_humidity,
+            ),
+            (
+                "Current sensor information for the living room is not available.",
+                unavailable_conditions,
+            ),
+            ("Sensor information for the bedroom is not available.", unknown),
+            ("No sensor locations are available yet.", no_locations),
+            ("What sensor location do you mean?", clarification),
+        )
+
+        for text, plan in cases:
+            with self.subTest(text=text):
+                self.assertTrue(validate_sensor_narration(text, plan))
+
+    def test_rejects_changed_or_added_content(self) -> None:
+        temperature = SensorAnswerPlan(
+            kind="reading",
+            subject="temperature",
+            fallback="The living room temperature is 70.7 degrees Fahrenheit.",
+            location="living room",
+            facts=(SensorFact("temperature", "70.7", "degrees Fahrenheit"),),
+        )
+        conditions = SensorAnswerPlan(
+            kind="reading",
+            subject="conditions",
+            fallback=(
+                "The living room is 70.7 degrees Fahrenheit "
+                "with 45 percent relative humidity."
+            ),
+            location="living room",
+            facts=(
+                SensorFact("temperature", "70.7", "degrees Fahrenheit"),
+                SensorFact("humidity", "45", "percent"),
+            ),
+        )
+        room_2 = SensorAnswerPlan(
+            kind="reading",
+            subject="temperature",
+            fallback="The room 2 temperature is 68 degrees Fahrenheit.",
+            location="room 2",
+            facts=(SensorFact("temperature", "68", "degrees Fahrenheit"),),
+        )
+        cases = (
+            ("The temperature is 70.7 degrees Fahrenheit.", temperature),
+            ("The living room is 70.7 degrees Fahrenheit.", temperature),
+            ("The living room temperature is 72 degrees Fahrenheit.", temperature),
+            ("The living room temperature is 70.7 degrees Celsius.", temperature),
+            ("The living room temperature is 70.7 degrees Fahrenheit at 8.", temperature),
+            ("The room 3 temperature is 68 degrees Fahrenheit.", room_2),
+            (
+                "The living room temperature is 45 percent and humidity is "
+                "70.7 degrees Fahrenheit.",
+                conditions,
+            ),
+            (
+                "The living room temperature is a comfortable 70.7 degrees Fahrenheit.",
+                temperature,
+            ),
+            (
+                "The living room temperature is 70.7 degrees Fahrenheit; seek shelter.",
+                temperature,
+            ),
+            (
+                "The living room temperature is 70.7 degrees Fahrenheit. Stay alert.",
+                temperature,
+            ),
+            ("**The living room temperature is 70.7 degrees Fahrenheit.**", temperature),
+            ("", temperature),
+        )
+
+        for text, plan in cases:
+            with self.subTest(text=text):
+                self.assertFalse(validate_sensor_narration(text, plan))
+
+
+class SensorAnswerPlanEdgeCaseTests(unittest.TestCase):
+    def current_living_room(self) -> SensorState:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/living_room/sensor/temperature/state",
+            b"21.5",
+        )
+        state.ingest(
+            "artemis/sensors/living_room/sensor/humidity/state",
+            b"45.0",
+        )
+        state.ingest("artemis/sensors/living_room/status", b"online")
+        return state
+
+    def test_builds_unavailable_and_no_current_information_plans(self) -> None:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest("artemis/sensors/living_room/status", b"online")
+
+        humidity = build_sensor_answer_plan(
+            "what is the humidity",
+            sensor_route("humidity"),
+            state,
+        )
+        conditions = build_sensor_answer_plan(
+            "how are conditions",
+            sensor_route("environment"),
+            state,
+        )
+
+        self.assertEqual(
+            humidity,
+            SensorAnswerPlan(
+                kind="unavailable",
+                subject="humidity",
+                fallback="I do not have a current humidity reading for the living room.",
+                location="living room",
+                facts=(),
+            ),
+        )
+        self.assertEqual(
+            conditions,
+            SensorAnswerPlan(
+                kind="unavailable",
+                subject="conditions",
+                fallback="I do not have current sensor information for the living room.",
+                location="living room",
+                facts=(),
+            ),
+        )
+
+    def test_builds_unknown_location_and_clarification_plans(self) -> None:
+        state = self.current_living_room()
+        unknown = build_sensor_answer_plan(
+            "what is the bedroom temperature",
+            sensor_route("temperature"),
+            state,
+        )
+        state.ingest("artemis/sensors/bedroom/status", b"online")
+        clarification = build_sensor_answer_plan(
+            "what is the temperature",
+            sensor_route("temperature"),
+            state,
+        )
+
+        self.assertEqual(
+            unknown,
+            SensorAnswerPlan(
+                kind="unknown_location",
+                subject=None,
+                fallback="I do not have sensor information for the bedroom.",
+                location="bedroom",
+                facts=(),
+            ),
+        )
+        self.assertEqual(
+            clarification,
+            SensorAnswerPlan(
+                kind="clarification",
+                subject=None,
+                fallback="Which location do you mean?",
+                location=None,
+                facts=(),
+            ),
+        )
+
+    def test_preserves_digits_in_a_validated_display_location(self) -> None:
+        state = SensorState(clock=lambda: 0.0)
+        state.ingest(
+            "artemis/sensors/room_2/sensor/temperature/state",
+            b"20",
+        )
+
+        plan = build_sensor_answer_plan(
+            "what is the room 2 temperature",
+            sensor_route("temperature"),
+            state,
+        )
+
+        self.assertEqual(
+            plan,
+            SensorAnswerPlan(
+                kind="reading",
+                subject="temperature",
+                fallback="The room 2 temperature is 68 degrees Fahrenheit.",
+                location="room 2",
+                facts=(SensorFact("temperature", "68", "degrees Fahrenheit"),),
+            ),
+        )
+
+    def test_temp_shorthand_preserves_an_unknown_named_location(self) -> None:
+        state = self.current_living_room()
+        route = analyze_query("what is the dining room temp")
+
+        plan = build_sensor_answer_plan(
+            "what is the dining room temp",
+            route,
+            state,
+        )
+
+        self.assertEqual(route["primary_intent"], "sensor_query")
+        self.assertEqual(
+            plan,
+            SensorAnswerPlan(
+                kind="unknown_location",
+                subject=None,
+                fallback="I do not have sensor information for the dining room.",
+                location="dining room",
+                facts=(),
+            ),
+        )
 
 
 class SensorAnswerTests(unittest.TestCase):

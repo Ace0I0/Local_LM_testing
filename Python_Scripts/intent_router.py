@@ -311,6 +311,7 @@ INTENT_RULES: dict[str, dict[str, Any]] = {
             "what is the temperature": 18,
             "what's the temperature": 18,
             "current temperature": 14,
+            "room temp": 14,
             "room temperature": 14,
             "how humid": 18,
             "what is the humidity": 18,
@@ -802,6 +803,20 @@ def analyze_query(user_text: str) -> dict[str, Any]:
     topic_scores = score_topics(normalized_text)
     severity_scores = score_severity(normalized_text)
     severity = _severity_level(severity_scores)
+
+    conceptual_sensor_words = {
+        "about",
+        "explain",
+        "history",
+        "meaning",
+        "measure",
+        "measurement",
+    }
+    if conceptual_sensor_words.intersection(tokenize_text(normalized_text)) or re.search(
+        r"\bhow\b.*\bworks?\b",
+        normalized_text,
+    ):
+        intent_scores["sensor_query"] = 0
 
     if severity == "urgent":
         intent_scores["safety_instruction"] += 24
