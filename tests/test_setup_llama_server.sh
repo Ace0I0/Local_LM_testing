@@ -25,3 +25,6 @@ assert_contains "$WIZARD" 'Restart=on-failure'
 assert_contains "$WIZARD" 'systemctl daemon-reload'
 assert_contains "$WIZARD" 'systemctl enable --now artemis-llama.service'
 assert_contains "$WIZARD" 'http://127.0.0.1:8080/health'
+if grep -Fq 'LLAMA_SERVER} -m' "$WIZARD"; then
+  fail "ExecStart cannot use LLAMA_SERVER as its executable"
+fi

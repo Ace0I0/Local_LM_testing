@@ -81,7 +81,7 @@ After=network.target
 Type=simple
 User=$LLAMA_SERVICE_USER
 EnvironmentFile=$SETTINGS_FILE
-ExecStart=\${LLAMA_SERVER} -m \${LLAMA_MODEL} --host 127.0.0.1 --port 8080 -c 8192 --jinja --chat-template-kwargs '{"enable_thinking":false}'
+ExecStart=$LLAMA_SERVER -m $LLAMA_MODEL --host 127.0.0.1 --port 8080 -c 8192 --jinja --chat-template-kwargs '{"enable_thinking":false}'
 Restart=on-failure
 RestartSec=5
 
