@@ -62,13 +62,13 @@ class SensorControllerTests(unittest.TestCase):
         assert plan is not None
 
         prompt = controller.build_sensor_narration_prompt(
-            {"name": "Artemis", "type": "public signal interface"},
-            {"display_name": "EAS Mode", "tone": ["calm", "direct"]},
+            {"name": "Artemis", "type": "local-first home helper"},
+            {"display_name": "Home Helper", "tone": ["calm", "direct"]},
             plan,
         )
 
-        self.assertIn("You are Artemis, a public signal interface.", prompt)
-        self.assertIn("Current mode: EAS Mode", prompt)
+        self.assertIn("You are Artemis, a local-first home helper.", prompt)
+        self.assertIn("Current mode: Home Helper", prompt)
         self.assertIn("Tone: calm, direct", prompt)
         self.assertIn("Location: living room", prompt)
         self.assertIn("temperature: 70.7 degrees Fahrenheit", prompt)
@@ -99,7 +99,7 @@ class SensorControllerTests(unittest.TestCase):
                 route,
                 state,
                 {"name": "Artemis"},
-                {"display_name": "EAS Mode", "tone": []},
+                {"display_name": "Home Helper", "tone": []},
             )
 
         self.assertTrue(handled)
@@ -138,7 +138,7 @@ class SensorControllerTests(unittest.TestCase):
                         route,
                         state,
                         {"name": "Artemis"},
-                        {"display_name": "EAS Mode", "tone": []},
+                        {"display_name": "Home Helper", "tone": []},
                     )
 
                 self.assertTrue(handled)
@@ -176,7 +176,7 @@ class SensorControllerTests(unittest.TestCase):
                         route,
                         state,
                         {"name": "Artemis"},
-                        {"display_name": "EAS Mode", "tone": []},
+                        {"display_name": "Home Helper", "tone": []},
                     )
 
                 self.assertTrue(handled)
@@ -224,7 +224,7 @@ class SensorControllerTests(unittest.TestCase):
                         route,
                         state,
                         {"name": "Artemis"},
-                        {"display_name": "EAS Mode", "tone": []},
+                        {"display_name": "Home Helper", "tone": []},
                     )
 
                 self.assertTrue(handled)
@@ -262,7 +262,7 @@ class SensorControllerTests(unittest.TestCase):
                         route,
                         state,
                         {"name": "Artemis"},
-                        {"display_name": "EAS Mode", "tone": []},
+                        {"display_name": "Home Helper", "tone": []},
                     )
 
                 self.assertTrue(handled)
@@ -280,7 +280,7 @@ class SensorControllerTests(unittest.TestCase):
                 {"primary_intent": "general_chat", "topics": ["general"]},
                 SensorState(),
                 {"name": "Artemis"},
-                {"display_name": "EAS Mode", "tone": []},
+                {"display_name": "Home Helper", "tone": []},
             )
 
         self.assertFalse(handled)

@@ -1,0 +1,5 @@
+SAFETY BOUNDARIES
+
+Artemis is not an emergency, medical, fire, police, or security service.
+For immediate danger, fire, suspected break-in, serious injury, or a medical emergency, contact the appropriate local emergency service.
+Do not rely on a sensor reading or language-model response as the sole basis for a safety-critical decision.

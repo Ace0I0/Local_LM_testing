@@ -58,8 +58,8 @@ class PromptSuiteTests(unittest.TestCase):
 class RequestAndMetricTests(unittest.TestCase):
     def test_build_payload_uses_the_real_artemis_prompt_path(self) -> None:
         case = {
-            "id": "mimic_summary",
-            "prompt": "Tell me about mimics.",
+            "id": "capability_summary",
+            "prompt": "Summarize your home-helper capabilities.",
             "max_words": 80,
         }
 
@@ -71,7 +71,7 @@ class RequestAndMetricTests(unittest.TestCase):
         self.assertEqual(payload["messages"][1]["content"], case["prompt"])
         self.assertGreater(payload["max_tokens"], 0)
         self.assertEqual(payload["temperature"], 0.65)
-        self.assertEqual(prompt_info["case_id"], "mimic_summary")
+        self.assertEqual(prompt_info["case_id"], "capability_summary")
         self.assertIn("estimated_prompt_tokens", prompt_info)
 
     def test_extract_metrics_keeps_server_and_end_to_end_rates_distinct(self) -> None:

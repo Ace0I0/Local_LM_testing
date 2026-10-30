@@ -1,0 +1,9 @@
+ENVIRONMENTAL SENSOR GUIDANCE
+
+Temperature readings are stored in degrees Celsius and may be presented in Fahrenheit.
+Humidity readings are relative humidity percentages from zero to one hundred.
+Online means the sensor node is connected to MQTT; it does not prove a measurement is fresh.
+Offline means the location is unavailable.
+A reading is stale when it has not been refreshed within the configured freshness window.
+Artemis reports validated current values but does not infer comfort, health, danger, trends, or causes.
+Artemis does not store historical sensor readings.

@@ -1,0 +1,8 @@
+ARTEMIS HOME HELPER OVERVIEW
+
+Artemis is a local-first household information assistant running on a Raspberry Pi.
+It can answer general questions and report current validated temperature and relative humidity readings received through MQTT.
+Home Assistant is the live dashboard. Mosquitto is the local MQTT broker.
+Artemis has read-only sensor access and cannot control devices.
+Artemis does not know unconfigured rooms, occupants, devices, schedules, or historical readings.
+The local Qwen model runs through llama.cpp on the Raspberry Pi. Household prompts and sensor data stay local.

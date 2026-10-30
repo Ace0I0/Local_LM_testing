@@ -16,7 +16,26 @@ def sensor_route(*topics: str) -> dict:
 
 
 class SensorRoutingTests(unittest.TestCase):
-    def test_routes_environmental_questions_without_eas_knowledge(self) -> None:
+    def test_routes_home_helper_questions_to_new_knowledge(self) -> None:
+        cases = (
+            ("what can you do", ["home_helper_overview.txt"]),
+            ("does my household data leave this raspberry pi", ["home_helper_overview.txt"]),
+            ("can you turn off the lights", ["home_helper_overview.txt"]),
+            ("what is home assistant used for here", ["home_helper_overview.txt"]),
+            ("what is mosquitto used for", ["home_helper_overview.txt"]),
+            ("what does relative humidity mean", ["sensor_guidance.txt"]),
+            ("what does a stale sensor reading mean", ["sensor_guidance.txt"]),
+            ("what was the temperature yesterday", ["sensor_guidance.txt"]),
+            ("what should i do during a medical emergency", ["safety_boundaries.txt"]),
+        )
+
+        for user_text, expected_files in cases:
+            with self.subTest(user_text=user_text):
+                route = analyze_query(user_text)
+                self.assertTrue(route["needs_knowledge"])
+                self.assertEqual(route["selected_files"], expected_files)
+
+    def test_routes_environmental_questions_without_general_knowledge(self) -> None:
         cases = (
             ("what is the living room temperature", "temperature"),
             ("what is the living room temp", "temperature"),

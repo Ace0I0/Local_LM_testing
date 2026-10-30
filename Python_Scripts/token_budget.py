@@ -46,45 +46,20 @@ REASON_RESPONSE_MULTIPLIER = {
 # Per-file budgets are tuned for Raspberry Pi use, not for filling the full
 # context window. Bigger files still need to be trimmed aggressively.
 FILE_BUDGETS = {
-    "eas_safety_protocols.txt": {
-        "context_tokens": 800,
+    "safety_boundaries.txt": {
+        "context_tokens": 300,
         "response_tokens": 384,
         "priority": 9,
     },
-    "eas_contacts.txt": {
-        "context_tokens": 300,
-        "response_tokens": 160,
-        "priority": 8,
-    },
-    "eas_diseases.txt": {
-        "context_tokens": 900,
-        "response_tokens": 384,
-        "priority": 7,
-    },
-    "eas_creatures.txt": {
-        "context_tokens": 1000,
-        "response_tokens": 384,
-        "priority": 7,
-    },
-    "eas_agencies.txt": {
+    "sensor_guidance.txt": {
         "context_tokens": 500,
-        "response_tokens": 256,
-        "priority": 6,
-    },
-    "eas_locations.txt": {
-        "context_tokens": 500,
-        "response_tokens": 256,
-        "priority": 6,
-    },
-    "eas_current_activity.txt": {
-        "context_tokens": 700,
         "response_tokens": 256,
         "priority": 8,
     },
-    "eas_general.txt": {
+    "home_helper_overview.txt": {
         "context_tokens": 600,
         "response_tokens": 256,
-        "priority": 5,
+        "priority": 7,
     },
 }
 
@@ -105,8 +80,8 @@ def estimate_tokens(text: str) -> int:
 
 
 def _file_budget(file_name: str) -> dict[str, int]:
-    """Return per-file budget settings, falling back to general EAS defaults."""
-    return FILE_BUDGETS.get(file_name, FILE_BUDGETS["eas_general.txt"])
+    """Return per-file budget settings, falling back to home-helper defaults."""
+    return FILE_BUDGETS.get(file_name, FILE_BUDGETS["home_helper_overview.txt"])
 
 
 def _selection_strength(item: dict[str, Any]) -> tuple[int, int, int]:

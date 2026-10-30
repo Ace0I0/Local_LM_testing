@@ -102,7 +102,7 @@ INTENT_RULES: dict[str, dict[str, Any]] = {
             "what mode are you in": 14,
             "current mode": 8,
             "which mode": 8,
-            "what is eas mode": 6,
+            "what is home helper mode": 6,
         },
         "keywords": {
             "mode": 4,
@@ -213,6 +213,10 @@ INTENT_RULES: dict[str, dict[str, Any]] = {
         "phrases": {
             "what is": 8,
             "what are": 8,
+            "what can you do": 12,
+            "what are your capabilities": 12,
+            "does my data": 10,
+            "does my household data": 12,
             "tell me about": 12,
             "explain": 10,
             "what does this mean": 12,
@@ -377,8 +381,6 @@ TOPIC_RULES: dict[str, dict[str, int]] = {
         "outbreak": 4,
         "medical": 4,
         "contagion": 4,
-        "deep root": 8,
-        "nature's mockery": 5,
     },
     "creature": {
         "creature": 5,
@@ -386,13 +388,6 @@ TOPIC_RULES: dict[str, dict[str, int]] = {
         "entity": 5,
         "entities": 5,
         "monster": 4,
-        "mimic": 6,
-        "mimics": 6,
-        "woodcrawler": 6,
-        "vita carnis": 8,
-        "gemini": 5,
-        "fake people": 6,
-        "wretch": 5,
     },
     "agency": {
         "agency": 5,
@@ -459,6 +454,13 @@ TOPIC_RULES: dict[str, dict[str, int]] = {
         "conditions": 8,
         "condition": 7,
         "room conditions": 10,
+        "sensor": 5,
+        "reading": 4,
+        "readings": 4,
+        "online": 5,
+        "offline": 5,
+        "stale": 5,
+        "freshness": 5,
     },
     "general": {
         "hello": 3,
@@ -466,28 +468,44 @@ TOPIC_RULES: dict[str, dict[str, int]] = {
         "hey": 3,
         "artemis": 2,
         "general": 3,
-        "eas": 3,
+        "capability": 5,
+        "capabilities": 5,
+        "control": 4,
+        "device": 4,
+        "devices": 4,
+        "home assistant": 6,
+        "light": 3,
+        "lights": 3,
+        "local": 4,
+        "mosquitto": 6,
+        "mqtt": 6,
+        "privacy": 5,
+        "raspberry pi": 5,
+        "what can you do": 6,
     },
 }
 
 
 TOPIC_TO_FILE = {
-    "safety": "eas_safety_protocols.txt",
-    "disease": "eas_diseases.txt",
-    "creature": "eas_creatures.txt",
-    "agency": "eas_agencies.txt",
-    "location": "eas_locations.txt",
-    "contact": "eas_contacts.txt",
-    "current_activity": "eas_current_activity.txt",
-    "general": "eas_general.txt",
+    "safety": "safety_boundaries.txt",
+    "disease": "safety_boundaries.txt",
+    "creature": "home_helper_overview.txt",
+    "agency": "safety_boundaries.txt",
+    "location": "home_helper_overview.txt",
+    "contact": "safety_boundaries.txt",
+    "current_activity": "home_helper_overview.txt",
+    "temperature": "sensor_guidance.txt",
+    "humidity": "sensor_guidance.txt",
+    "environment": "sensor_guidance.txt",
+    "general": "home_helper_overview.txt",
 }
 
 
 INTENT_PRIMARY_FILES = {
-    "current_status": ["eas_current_activity.txt"],
-    "contact_reporting": ["eas_contacts.txt", "eas_agencies.txt"],
-    "safety_instruction": ["eas_safety_protocols.txt"],
-    "location_query": ["eas_locations.txt"],
+    "current_status": ["home_helper_overview.txt"],
+    "contact_reporting": ["safety_boundaries.txt"],
+    "safety_instruction": ["safety_boundaries.txt"],
+    "location_query": ["home_helper_overview.txt"],
 }
 
 
@@ -701,7 +719,6 @@ def _needs_knowledge(primary_intent: str, topics: list[str]) -> bool:
         "mode_query",
         "general_chat",
         "sensor_query",
-        "out_of_scope",
     }:
         return False
     return bool(INTENT_RULES.get(primary_intent, {}).get("needs_knowledge", False) or topics)
@@ -725,28 +742,26 @@ def _select_files_from_route(route: dict[str, Any]) -> list[str]:
     for file_name in INTENT_PRIMARY_FILES.get(primary_intent, []):
         _add_unique(selected, file_name)
 
-    if primary_intent == "explanation":
+    if primary_intent in {"explanation", "out_of_scope"}:
         for topic in topics:
-            if topic in {"safety", "disease", "creature", "agency", "location", "general"}:
+            if topic in TOPIC_TO_FILE:
                 _add_unique(selected, TOPIC_TO_FILE[topic])
 
     if primary_intent == "safety_instruction":
         if "disease" in topics:
-            _add_unique(selected, "eas_diseases.txt")
-            _add_unique(selected, "eas_contacts.txt")
+            _add_unique(selected, "safety_boundaries.txt")
         elif "creature" in topics:
-            _add_unique(selected, "eas_creatures.txt")
-            _add_unique(selected, "eas_contacts.txt")
+            _add_unique(selected, "home_helper_overview.txt")
         elif severity == "urgent":
-            _add_unique(selected, "eas_contacts.txt")
+            _add_unique(selected, "safety_boundaries.txt")
         else:
-            _add_unique(selected, "eas_general.txt")
+            _add_unique(selected, "home_helper_overview.txt")
 
     if primary_intent == "contact_reporting":
         if "disease" in topics:
-            _add_unique(selected, "eas_diseases.txt")
+            _add_unique(selected, "safety_boundaries.txt")
         if "creature" in topics:
-            _add_unique(selected, "eas_creatures.txt")
+            _add_unique(selected, "home_helper_overview.txt")
 
     if primary_intent == "current_status":
         for topic in topics:
@@ -754,7 +769,7 @@ def _select_files_from_route(route: dict[str, Any]) -> list[str]:
                 _add_unique(selected, TOPIC_TO_FILE[topic])
 
     if primary_intent == "location_query":
-        _add_unique(selected, "eas_locations.txt")
+        _add_unique(selected, "home_helper_overview.txt")
 
     return selected[:MAX_SELECTED_FILES]
 
@@ -808,9 +823,11 @@ def analyze_query(user_text: str) -> dict[str, Any]:
         "about",
         "explain",
         "history",
+        "mean",
         "meaning",
         "measure",
         "measurement",
+        "yesterday",
     }
     if conceptual_sensor_words.intersection(tokenize_text(normalized_text)) or re.search(
         r"\bhow\b.*\bworks?\b",

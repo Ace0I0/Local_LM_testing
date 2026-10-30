@@ -89,8 +89,8 @@ GENERIC_RETRIEVAL_WORDS = {
 # Defines the basic identity of Artemis
 IDENTITY_PATH = MEMORY_DIR / "identity.json"
 
-# Singlular mode for now, 3 total in the future
-MODE_PATH = MODES_DIR / "EAS.json"
+# Home Helper is the single active mode.
+MODE_PATH = MODES_DIR / "home_helper.json"
 
 
 # General json loader
@@ -109,7 +109,7 @@ def load_identity() -> dict:
 def load_mode() -> dict:
     return load_json_file(MODE_PATH)
 
-# general list formater (we have stuff saved in a "list" style in stuff like identity.json and EAS.json which is one of our modes)
+# General formatter for list values in identity and mode JSON.
 def format_list(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items)
 
@@ -167,16 +167,10 @@ def get_knowledge_query_keywords(user_text: str) -> list[str]:
     words = [word for word in words if len(word) >= 4]
 
     synonym_groups = {
-        "deep root": ["deep root", "root", "roots", "bulb", "bulbs", "sprout", "sprouts", "disease", "virus"],
-        "nature's mockery": ["nature's mockery", "mockery", "plant", "fungus", "growth", "vine", "vines"],
-        "woodcrawler": ["woodcrawler", "crawlspace", "floor", "floorboard", "under", "knocking"],
-        "fake people": ["fake people", "duplicate", "person", "family", "imitate", "voice", "help"],
-        "mimic": ["mimic", "person", "humanoid", "figure", "window", "outside"],
-        "harvester": ["harvester", "bulb", "tendril", "woods", "trail"],
-        "host of influence": ["host", "influence", "spore", "spores", "dust", "coordination"],
-        "crawl": ["crawl", "tendril", "tendrils", "meat", "antenna", "signal"],
-        "report": ["report", "contact", "phone", "email", "address", "agency", "office"],
-        "current": ["current", "active", "status", "happening", "advisory", "watch"],
+        "home helper": ["home", "helper", "capability", "capabilities", "local", "privacy"],
+        "temperature": ["temperature", "celsius", "fahrenheit", "degrees", "sensor"],
+        "humidity": ["humidity", "moisture", "percent", "sensor"],
+        "safety": ["safety", "emergency", "danger", "medical", "fire", "police"],
     }
 
     base_keywords = set(words)
@@ -370,8 +364,8 @@ def build_system_prompt(
         "Core identity rules:",
         core_rules,
         "",
-        f"Current mode: {mode.get('display_name', 'EAS Mode')}",
-        f"Mode name: {mode.get('mode_name', 'eas')}",
+        f"Current mode: {mode.get('display_name', 'Home Helper')}",
+        f"Mode name: {mode.get('mode_name', 'home_helper')}",
         f"Mode description: {mode.get('description', '')}",
         f"Tone: {tone}",
         "",
@@ -382,10 +376,10 @@ def build_system_prompt(
         examples,
     ]
 
-    if route.get("intent") != "general_eas_info" or route.get("topics"):
+    if route.get("intent") != "general_chat" or route.get("topics"):
         prompt_prefix.extend([
             "",
-            f"Detected intent: {route.get('intent', 'general_eas_info')}",
+            f"Detected intent: {route.get('intent', 'general_chat')}",
             f"Detected topics: {', '.join(route.get('topics', [])) if route.get('topics') else 'none'}",
         ])
 
@@ -671,7 +665,7 @@ def build_sensor_narration_prompt(
     return "\n".join(
         [
             f"You are {name}, a {robot_type}.",
-            f"Current mode: {mode.get('display_name', 'EAS Mode')}",
+            f"Current mode: {mode.get('display_name', 'Home Helper')}",
             f"Tone: {tone}",
             "",
             "Trusted sensor facts:",
@@ -748,15 +742,6 @@ def run_router_tests() -> int:
         ("hello artemis", "general_chat", {"general"}),
         ("who are you", "identity_query", {"general"}),
         ("what mode are you in", "mode_query", {"general"}),
-        ("anything to report recently", "current_status", {"current_activity"}),
-        ("any updates today", "current_status", {"current_activity"}),
-        ("anything disease related to report", "current_status", {"disease", "current_activity"}),
-        ("who should i contact to report this disease", "contact_reporting", {"disease", "contact"}),
-        ("how do i report this", "contact_reporting", {"contact"}),
-        ("what is deep root disease", "explanation", {"disease"}),
-        ("what should i do if someone has symptoms", "safety_instruction", {"disease"}),
-        ("where is station 7", "location_query", {"location"}),
-        ("tell me about mimics", "explanation", {"creature"}),
         ("what is the living room temperature", "sensor_query", {"temperature"}),
         ("what is the living room temp", "sensor_query", {"temperature"}),
         ("how humid is the living room", "sensor_query", {"humidity"}),
@@ -791,7 +776,7 @@ def run_interactive(identity: dict, mode: dict, sensor_state: SensorState) -> No
 
     print(f"{BOLD}{RED}Local Qwen + SAM test{RESET}")
     print(f"Loaded identity: {BOLD}{RED}{identity.get('name', 'Artemis')}{RESET}")
-    print(f"Loaded mode: {BOLD}{RED}{mode.get('display_name', 'EAS Mode')}{RESET}")
+    print(f"Loaded mode: {BOLD}{RED}{mode.get('display_name', 'Home Helper')}{RESET}")
     debug_log(f"LLM server URL: {LLAMA_SERVER_URL}")
     debug_log(f"memory folder: {MEMORY_DIR}")
     print(

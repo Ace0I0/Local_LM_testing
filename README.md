@@ -7,7 +7,11 @@
 
 Artemis is an offline-first voice assistant prototype built around a local large language model, local knowledge files, and retro SAM text-to-speech. The current target is a Raspberry Pi 5 with 16 GB of RAM running Qwen3.5 2B through `llama.cpp`.
 
-The project currently focuses on an Emergency Alert System-inspired personality. It routes each prompt by intent and topic, loads only the relevant local knowledge, keeps the prompt within a fixed token budget, requests a response from the local model, and renders the result to a WAV file through SAM.
+Artemis now uses a calm Home Helper identity focused on local household
+information. It routes each prompt by intent and topic, loads only the relevant
+local knowledge, keeps the prompt within a fixed token budget, requests a
+response from the local model, and renders the result to a WAV file through
+SAM.
 
 ## Current capabilities
 
@@ -56,7 +60,7 @@ Python_Scripts/
 memory/
   identity.json      Artemis identity and voice settings
   modes/             Mode definitions
-  knowledge/         Local EAS lore, advisories, contacts, and protocols
+  knowledge/         Local household capabilities, sensor guidance, and safety boundaries
 Archive/             Older experiments and tests kept for reference
 ```
 
@@ -236,9 +240,7 @@ python Python_Scripts/load_llm_sam.py --router-test
 
 ## Current status and limitations
 
-- EAS Mode is the only mode wired into the controller; its path is currently hardcoded.
-- Learning and Informational mode JSON files are drafts and are not selectable at runtime.
-- `memory/active_mode.txt` is not yet used by the controller.
+- Home Helper is the single active mode; mode switching is not implemented.
 - Microphone input, wake-word detection, and physical robot controls are not implemented.
 - SAM and output paths are currently hardcoded for `/home/pi/SAM/`.
 - The files under `Archive/` are historical references, not the active test suite.
