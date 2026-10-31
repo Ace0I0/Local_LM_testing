@@ -14,17 +14,17 @@ constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10UL * 1000UL;
 constexpr unsigned long MQTT_RETRY_INTERVAL_MS = 5UL * 1000UL;
 
 constexpr char TEMPERATURE_TOPIC[] =
-    "artemis/sensors/living_room/sensor/temperature/state";
+    "artemis/sensors/game_room/sensor/temperature/state";
 constexpr char HUMIDITY_TOPIC[] =
-    "artemis/sensors/living_room/sensor/humidity/state";
-constexpr char STATUS_TOPIC[] = "artemis/sensors/living_room/status";
+    "artemis/sensors/game_room/sensor/humidity/state";
+constexpr char STATUS_TOPIC[] = "artemis/sensors/game_room/status";
 constexpr char TEMPERATURE_DISCOVERY_TOPIC[] =
-    "homeassistant/sensor/living_room/temperature/config";
+    "homeassistant/sensor/game_room/temperature/config";
 constexpr char HUMIDITY_DISCOVERY_TOPIC[] =
-    "homeassistant/sensor/living_room/humidity/config";
+    "homeassistant/sensor/game_room/humidity/config";
 
-constexpr char TEMPERATURE_DISCOVERY[] = R"json({"name":"Living Room Temperature","unique_id":"artemis_living_room_temperature","state_topic":"artemis/sensors/living_room/sensor/temperature/state","availability_topic":"artemis/sensors/living_room/status","payload_available":"online","payload_not_available":"offline","device_class":"temperature","state_class":"measurement","unit_of_measurement":"\u00b0C","device":{"identifiers":["artemis_living_room"],"name":"Living Room Sensor","manufacturer":"Artemis","model":"ESP32 AM2302"}})json";
-constexpr char HUMIDITY_DISCOVERY[] = R"json({"name":"Living Room Humidity","unique_id":"artemis_living_room_humidity","state_topic":"artemis/sensors/living_room/sensor/humidity/state","availability_topic":"artemis/sensors/living_room/status","payload_available":"online","payload_not_available":"offline","device_class":"humidity","state_class":"measurement","unit_of_measurement":"%","device":{"identifiers":["artemis_living_room"],"name":"Living Room Sensor","manufacturer":"Artemis","model":"ESP32 AM2302"}})json";
+constexpr char TEMPERATURE_DISCOVERY[] = R"json({"name":"Living Room Temperature","unique_id":"artemis_game_room_temperature","state_topic":"artemis/sensors/game_room/sensor/temperature/state","availability_topic":"artemis/sensors/game_room/status","payload_available":"online","payload_not_available":"offline","device_class":"temperature","state_class":"measurement","unit_of_measurement":"\u00b0C","device":{"identifiers":["artemis_game_room"],"name":"Living Room Sensor","manufacturer":"Artemis","model":"ESP32 AM2302"}})json";
+constexpr char HUMIDITY_DISCOVERY[] = R"json({"name":"Living Room Humidity","unique_id":"artemis_game_room_humidity","state_topic":"artemis/sensors/game_room/sensor/humidity/state","availability_topic":"artemis/sensors/game_room/status","payload_available":"online","payload_not_available":"offline","device_class":"humidity","state_class":"measurement","unit_of_measurement":"%","device":{"identifiers":["artemis_game_room"],"name":"Living Room Sensor","manufacturer":"Artemis","model":"ESP32 AM2302"}})json";
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient wifiClient;
@@ -109,7 +109,7 @@ void setup() {
   dht.begin();
 
   WiFi.mode(WIFI_STA);
-  mqttClient.setId("artemis-living-room");
+  mqttClient.setId("artemis-game-room");
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   mqttClient.setTxPayloadSize(1024);
   mqttClient.beginWill(STATUS_TOPIC, 7, true, 1);
