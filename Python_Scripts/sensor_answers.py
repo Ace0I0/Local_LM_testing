@@ -26,6 +26,21 @@ _LEADING_LOCATION_PATTERNS = (
     ),
 )
 _UNIT_ONLY = {"celsius", "fahrenheit", "degree celsius", "degree fahrenheit"}
+_HOUSE_SCOPE = re.compile(
+    r"\b(?:all rooms|every room|whole house|house summary|"
+    r"(?:around|throughout|across|in) (?:the |my )?(?:house|home))\b"
+)
+_ROOM_RANKING = re.compile(
+    r"\b(?:(?:which|what) room (?:is (?:the )?|has (?:the )?)|"
+    r"(?:which|what)(?: is)? (?:the )?)"
+    r"(?P<ranking>warmest|coldest|most humid|least humid|"
+    r"highest temperature|lowest temperature|highest humidity|lowest humidity)\b"
+)
+_PAIR_SCOPE = re.compile(
+    r"^compare (?:the )?(?P<first>.+?) (?:and|with|to) (?:the )?(?P<second>.+?)"
+    r"(?: (?:temperature|humidity|conditions|readings))?"
+    r"(?: in (?:degrees )?(?:celsius|fahrenheit))?$"
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +57,8 @@ class SensorAnswerPlan:
     location: str | None
     facts: tuple[SensorFact, ...]
     subject: str | None = None
+    parts: tuple[SensorAnswerPlan, ...] = ()
+    intro: str = ""
 
 
 @dataclass(frozen=True)
@@ -69,6 +86,22 @@ def build_sensor_answer_plan(
         return None
 
     normalized = normalize_text(user_text)
+    pair = _PAIR_SCOPE.fullmatch(normalized)
+    if pair:
+        locations = tuple(pair.group(name).replace(" ", "_") for name in ("first", "second"))
+        for location in locations:
+            if location not in state.known_locations():
+                display = _display_location(location)
+                return SensorAnswerPlan(
+                    "unknown_location", f"I do not have sensor information for the {display}.",
+                    display, (),
+                )
+        return _multi_room_plan(
+            normalized, route, state, None, tuple(dict.fromkeys(locations)),
+        )
+    ranking = _ROOM_RANKING.search(normalized)
+    if ranking or _HOUSE_SCOPE.search(normalized):
+        return _multi_room_plan(normalized, route, state, ranking)
     resolution = _resolve_location(normalized, state)
     if resolution.error_kind == "clarification":
         return SensorAnswerPlan(
@@ -117,6 +150,68 @@ def build_sensor_answer_plan(
     if wants_humidity:
         return _humidity_plan(snapshot)
     return _conditions_plan(snapshot, "celsius" in normalized)
+
+
+def _multi_room_plan(
+    normalized: str,
+    route: dict[str, Any],
+    state: SensorState,
+    ranking: re.Match[str] | None,
+    locations: tuple[str, ...] | None = None,
+) -> SensorAnswerPlan:
+    snapshots = tuple(
+        snapshot for location in (locations if locations is not None else state.known_locations())
+        if (snapshot := state.snapshot(location)) is not None
+    )
+    if not snapshots:
+        return SensorAnswerPlan(
+            "no_locations", "I do not have any sensor locations yet.", None, (),
+        )
+
+    topics = set(route.get("topics", []))
+    subject = "conditions"
+    if "temperature" in topics and "humidity" not in topics and "environment" not in topics:
+        subject = "temperature"
+    elif "humidity" in topics and "temperature" not in topics and "environment" not in topics:
+        subject = "humidity"
+
+    intro = ""
+    if ranking:
+        label = ranking.group("ranking")
+        subject = "humidity" if "humid" in label else "temperature"
+        current = [s for s in snapshots if getattr(s, subject).state == "current"]
+        if len(current) >= 2:
+            select = min if label in {
+                "coldest", "least humid", "lowest temperature", "lowest humidity",
+            } else max
+            extreme = select(getattr(s, subject).value for s in current)
+            winners = [s for s in current if getattr(s, subject).value == extreme]
+            names = " and ".join(_display_location(s.location_id) for s in winners)
+            description = {
+                "highest temperature": "warmest", "lowest temperature": "coldest",
+                "highest humidity": "most humid", "lowest humidity": "least humid",
+            }.get(label, label)
+            if len(winners) == 1:
+                intro = f"Among rooms with current {subject} readings, the {names} is {description}."
+            else:
+                intro = f"Among rooms with current {subject} readings, the {names} are tied for {description}."
+            snapshots = tuple(winners + [s for s in snapshots if getattr(s, subject).state != "current"])
+        elif current:
+            intro = f"Only one room has a current {subject} reading; a comparison is not available."
+
+    parts = []
+    for snapshot in snapshots:
+        if subject == "temperature":
+            parts.append(_temperature_plan(snapshot, "celsius" in normalized))
+        elif subject == "humidity":
+            parts.append(_humidity_plan(snapshot))
+        else:
+            parts.append(_conditions_plan(snapshot, "celsius" in normalized))
+    fallback = " ".join(([intro] if intro else []) + [p.fallback for p in parts])
+    return SensorAnswerPlan(
+        "comparison" if ranking else "summary", fallback, None, (), subject,
+        tuple(parts), intro,
+    )
 
 
 def _resolve_location(
@@ -287,6 +382,15 @@ def validate_sensor_narration(text: str, plan: SensorAnswerPlan) -> bool:
 
 
 def _sensor_narration_patterns(plan: SensorAnswerPlan) -> tuple[str, ...]:
+    if plan.parts:
+        # Keep every room paired with its facts; reuse the single-room grammar.
+        patterns = []
+        if plan.intro:
+            patterns.append(re.escape(plan.intro))
+        for part in plan.parts:
+            alternatives = (re.escape(part.fallback), *_sensor_narration_patterns(part))
+            patterns.append("(?:" + "|".join(alternatives) + ")")
+        return (r"\s+".join(patterns),)
     if plan.kind == "clarification":
         return (
             r"Which location do you mean\?",

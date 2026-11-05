@@ -597,7 +597,7 @@ class SensorAnswerTests(unittest.TestCase):
             "The master bedroom temperature is 77 degrees Fahrenheit.",
         )
 
-    def test_asks_for_one_location_when_multiple_are_named(self) -> None:
+    def test_compares_named_locations_and_reports_unavailable_readings(self) -> None:
         state = self.current_living_room()
         state.ingest("artemis/sensors/bedroom/status", b"online")
 
@@ -607,7 +607,11 @@ class SensorAnswerTests(unittest.TestCase):
             state,
         )
 
-        self.assertEqual(answer, "Which location do you mean?")
+        self.assertEqual(
+            answer,
+            "I do not have a current temperature reading for the bedroom. "
+            "The living room temperature is 70.7 degrees Fahrenheit.",
+        )
 
     def test_non_sensor_route_is_not_handled(self) -> None:
         answer = build_sensor_answer(

@@ -644,14 +644,7 @@ def make_sam_wav(text: str, identity: dict) -> None:
     subprocess.run(cmd, check=True)
 
 
-def build_sensor_narration_prompt(
-    identity: dict,
-    mode: dict,
-    plan: SensorAnswerPlan,
-) -> str:
-    name = identity.get("name", "Artemis")
-    robot_type = identity.get("type", "retro animatronic robot")
-    tone = ", ".join(mode.get("tone", [])) or "plain and direct"
+def _sensor_narration_facts(plan: SensorAnswerPlan) -> list[str]:
     facts = []
     if plan.location is not None:
         facts.append(f"Location: {plan.location}")
@@ -661,6 +654,31 @@ def build_sensor_narration_prompt(
     )
     if not plan.facts:
         facts.append(f"Availability fact: {plan.fallback}")
+    return facts
+
+
+def build_sensor_narration_prompt(
+    identity: dict,
+    mode: dict,
+    plan: SensorAnswerPlan,
+) -> str:
+    name = identity.get("name", "Artemis")
+    robot_type = identity.get("type", "retro animatronic robot")
+    tone = ", ".join(mode.get("tone", [])) or "plain and direct"
+    if plan.parts:
+        sections = ["\n".join(_sensor_narration_facts(part)) for part in plan.parts]
+        return "\n\n".join([
+            f"You are {name}, a {robot_type}. Tone: {tone}.",
+            f"Current mode: {mode.get('display_name', 'Home Helper')}",
+            "Trusted sensor facts (keep this room order):",
+            *sections,
+            f"Required introduction, copy exactly: {plan.intro}" if plan.intro else "",
+            "Write one short factual sentence per room after the introduction. "
+            "Keep the exact locations, measurements, values, units, and unavailable facts. "
+            "Do not calculate, infer additional comparisons, advise, or add facts. "
+            "Return plain text only, without headings, lists, or Markdown.",
+        ])
+    facts = _sensor_narration_facts(plan)
 
     return "\n".join(
         [
@@ -692,11 +710,14 @@ def handle_sensor_turn(
         return False
 
     system_prompt = build_sensor_narration_prompt(identity, mode, plan)
+    response_tokens = SENSOR_RESPONSE_TOKENS
+    if plan.parts:
+        response_tokens = min(512, SENSOR_RESPONSE_TOKENS * (len(plan.parts) + 1))
     try:
         narration, _ = ask_local_model(
             user_text,
             system_prompt,
-            SENSOR_RESPONSE_TOKENS,
+            response_tokens,
             timeout=SENSOR_REQUEST_TIMEOUT_SECONDS,
         )
     except (
